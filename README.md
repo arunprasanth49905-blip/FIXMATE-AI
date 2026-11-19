@@ -5,6 +5,7 @@ FIXMATE AI is an advanced AI-powered software bug detection and autonomous code 
 - **Phase 1:** Core foundational full-stack architecture, live system telemetry, secure Google Gemini API integration, and an enterprise light dashboard.
 - **Phase 2:** Project Management & Code Workspace — SQLite database persistence, secure file workspace storage, path traversal protection, interactive Monaco Editor, file tree navigation, and multi-file tab system.
 - **Phase 3:** Multi-Language Code Parsing & Structural Intelligence Engine — Real AST and syntax-tree parsing without execution for Python (`ast`), JavaScript (`tree-sitter-javascript`), and TypeScript/TSX (`tree-sitter-typescript`), deep symbol extraction, syntax diagnostics detection, project-level metrics, and Monaco Editor deep navigation.
+- **Phase 4:** Deterministic Bug Detection Engine — Static, zero-execution rule engine with 20 deterministic rules across Python, JavaScript, and TypeScript, calibrated confidence scoring, code evidence extraction, actionable remediation, and Monaco Editor line/column deep navigation.
 
 ---
 
@@ -47,7 +48,8 @@ FIXMATE AI/
 │   │   ├── models/
 │   │   │   ├── __init__.py
 │   │   │   ├── project.py              # Project and ProjectFile SQLAlchemy models
-│   │   │   └── analysis.py             # ProjectAnalysis and FileAnalysisRecord models
+│   │   │   ├── analysis.py             # ProjectAnalysis and FileAnalysisRecord models
+│   │   │   └── detection.py            # DetectionRun and DetectionFinding SQLAlchemy models
 │   │   ├── api/v1/
 │   │   │   ├── router.py               # API v1 router aggregation
 │   │   │   └── endpoints/
@@ -55,31 +57,41 @@ FIXMATE AI/
 │   │   │       ├── system.py           # GET /info, GET /ai-status, POST /ai-test
 │   │   │       ├── projects.py         # CRUD /api/v1/projects
 │   │   │       ├── files.py            # File tree, create, edit, rename, delete, upload
-│   │   │       └── parsing.py          # AST parsing, project analysis, diagnostics APIs
+│   │   │       ├── parsing.py          # AST parsing, project analysis, diagnostics APIs
+│   │   │       └── detection.py        # Bug detection runs, findings, rules catalog APIs
 │   │   ├── schemas/                    # Pydantic data schemas
 │   │   │   ├── health.py
 │   │   │   ├── system.py
 │   │   │   ├── ai.py
 │   │   │   ├── project.py
 │   │   │   ├── file.py
-│   │   │   └── parsing.py              # AST symbols, diagnostics, statistics, responses
+│   │   │   ├── parsing.py              # AST symbols, diagnostics, statistics, responses
+│   │   │   └── detection.py            # Finding, DetectionRunResponse, rules schemas
 │   │   └── services/
 │   │       ├── gemini_service.py       # Google GenAI SDK integration & error sanitization
 │   │       ├── project_service.py      # Project creation, listing, updating, deletion
 │   │       ├── file_service.py         # Path traversal security, tree building, disk I/O
-│   │       └── parsing/                # Phase 3 Multi-Language Parsing Engine
-│   │           ├── base_parser.py      # Abstract BaseParser interface
-│   │           ├── python_parser.py    # Native AST parser (classes, methods, functions, calls)
-│   │           ├── javascript_parser.py# Tree-sitter JS parser (ESM/CJS, classes, arrows)
-│   │           ├── typescript_parser.py# Tree-sitter TS/TSX parser (interfaces, types, enums)
-│   │           ├── parser_registry.py  # Language parser registry and status reporter
-│   │           ├── parser_limits.py    # Resource thresholds (1MB, 500 files, 25MB)
-│   │           ├── syntax_diagnostics.py# Error node converter & diagnostics builder
-│   │           └── project_analysis_service.py # Full workspace scanner & SQLite persistence
+│   │       ├── parsing/                # Phase 3 Multi-Language Parsing Engine
+│   │       │   ├── base_parser.py      # Abstract BaseParser interface
+│   │       │   ├── python_parser.py    # Native AST parser (classes, methods, functions, calls)
+│   │       │   ├── javascript_parser.py# Tree-sitter JS parser (ESM/CJS, classes, arrows)
+│   │       │   ├── typescript_parser.py# Tree-sitter TS/TSX parser (interfaces, types, enums)
+│   │       │   ├── parser_registry.py  # Language parser registry and status reporter
+│   │       │   ├── parser_limits.py    # Resource thresholds (1MB, 500 files, 25MB)
+│   │       │   ├── syntax_diagnostics.py# Error node converter & diagnostics builder
+│   │       │   └── project_analysis_service.py # Full workspace scanner & SQLite persistence
+│   │       └── detection/              # Phase 4 Deterministic Bug Detection Engine
+│   │           ├── base_rule.py        # Abstract BaseRule interface
+│   │           ├── rule_context.py     # RuleContext encapsulation (AST, source, analysis)
+│   │           ├── rule_registry.py    # Central rule catalog and language index
+│   │           ├── detection_engine.py # Workspace scanner, evaluator, and DB persistence
+│   │           └── rules/
+│   │               ├── python_rules.py     # 10 deterministic Python rules (PY-W001..W010)
+│   │               └── javascript_rules.py # 10 deterministic JS/TS rules (JS-W001..W010)
 │   ├── data/                           # Local SQLite database & isolated workspaces (gitignored)
 │   │   ├── fixmate.db
 │   │   └── workspaces/{project_id}/...
-│   ├── tests/                          # 49 Pytest unit and integration tests
+│   ├── tests/                          # 74 Pytest unit and integration tests
 │   ├── requirements.txt                # tree-sitter, tree-sitter-javascript, tree-sitter-typescript
 │   └── .env.example
 ├── frontend/
@@ -90,9 +102,10 @@ FIXMATE AI/
 │   │   │   ├── layout/                 # Sidebar, Navbar, Main Layout
 │   │   │   ├── dashboard/              # SystemStatus, GeminiTest, Metrics, Activity
 │   │   │   ├── workspace/              # FileExplorer, EditorTabs, CodeEditor, FileIcon
-│   │   │   └── analysis/               # AnalysisPanel, AnalysisSummaryCard, StructuralViewer
+│   │   │   ├── analysis/               # AnalysisPanel, AnalysisSummaryCard, StructuralViewer
+│   │   │   └── detection/              # DetectionPanel (Findings list, filters, Monaco jump)
 │   │   ├── pages/                      # DashboardPage, ProjectsPage, WorkspacePage, NewAnalysisPage
-│   │   ├── services/                   # apiClient.ts (Typed HTTP client for Phase 1-3)
+│   │   ├── services/                   # apiClient.ts (Typed HTTP client for Phase 1-4)
 │   │   ├── types/                      # TypeScript API interface definitions
 │   │   └── styles/                     # Modern Light Theme stylesheet
 │   ├── public/
@@ -102,7 +115,8 @@ FIXMATE AI/
 ├── documentation/
 │   ├── PHASE_1_REPORT.md
 │   ├── PHASE_2_REPORT.md               # Phase 2 master verification report
-│   └── PHASE_3_REPORT.md               # Phase 3 multi-language parsing report
+│   ├── PHASE_3_REPORT.md               # Phase 3 multi-language parsing report
+│   └── PHASE_4_REPORT.md               # Phase 4 deterministic bug detection report
 └── README.md
 ```
 
@@ -225,12 +239,18 @@ npm run dev
 | `GET` | `/api/v1/projects/{project_id}/analysis/parse/{analysis_id}/files` | List all parsed files with language, lines, symbol counts, and status. |
 | `GET` | `/api/v1/projects/{project_id}/analysis/parse/{analysis_id}/files/{file_id_or_path}` | Get detailed AST symbols, imports, and diagnostics for a specific file. |
 | `GET` | `/api/v1/projects/{project_id}/analysis/parse/{analysis_id}/diagnostics` | Aggregate all syntax errors and diagnostic warnings across the project. |
+| `GET` | `/api/v1/projects/{project_id}/detection/rules` | Retrieve catalog of all 20 deterministic detection rules with metadata. |
+| `POST` | `/api/v1/projects/{project_id}/detection/run` | Execute deterministic static bug detection across workspace files. |
+| `POST` | `/api/v1/projects/{project_id}/detection/run-file` | Run ad-hoc bug detection on a single file path or provided code snippet. |
+| `GET` | `/api/v1/projects/{project_id}/detection/latest` | Retrieve latest bug detection run summary and findings. |
+| `GET` | `/api/v1/projects/{project_id}/detection/runs/{run_id}` | Retrieve specific historical bug detection run. |
+| `GET` | `/api/v1/projects/{project_id}/detection/runs/{run_id}/findings` | Query filtered findings (`severity`, `language`, `rule_id`, `search`). |
 
 ---
 
 ## 6. Automated Testing
 
-### Backend Tests (Pytest - 49 Tests)
+### Backend Tests (Pytest - 74 Tests)
 ```cmd
 cd /d "D:\FIXMATE AI\backend"
 .venv\Scripts\activate
@@ -249,8 +269,11 @@ Verifies:
 9. JavaScript tree-sitter parser (functions, arrow functions, classes, methods, CommonJS/ESM imports, syntax errors).
 10. TypeScript & TSX tree-sitter parser (interfaces, type aliases, enums, generics, type-only imports, access modifiers, JSX components).
 11. Multi-language project analysis engine, directory exclusion filtering (`node_modules`, `.venv`, `.git`), and SQLite persistence.
+12. 10 Python deterministic bug rules (positive & negative test coverage for `PY-W001` through `PY-W010`).
+13. 10 JavaScript/TypeScript deterministic bug rules (positive & negative test coverage for `JS-W001` through `JS-W010`).
+14. Bug detection API execution, latest retrieval, severity/language filtering, and ad-hoc file detection.
 
-### Frontend Tests (Vitest - 28 Tests)
+### Frontend Tests (Vitest - 33 Tests across 5 Suites)
 ```cmd
 cd /d "D:\FIXMATE AI\frontend"
 npm test
@@ -265,7 +288,9 @@ Verifies:
 6. Monaco Editor content synchronization and `Ctrl+S` save operations.
 7. Code Intelligence side panel docking, tab switching (Overview, Files, Diagnostics).
 8. AST structural symbol inspection, language distribution charts, and click-to-editor source line navigation.
-9. Resilient HTTP and API error handling (avoiding `[object Object]` rendering).
+9. Deterministic Bug Detection panel, severity metric counters, search filtering, code evidence preview, and remediation advice.
+10. Direct "Jump to Code" navigation from detection findings into exact Monaco line and column coordinates.
+11. Resilient HTTP and API error handling (avoiding `[object Object]` rendering).
 
 ### Frontend Production Build
 ```cmd

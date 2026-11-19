@@ -8,9 +8,10 @@ import {
   Code2,
   AlertCircle,
   Sparkles,
+  Bug,
 } from 'lucide-react';
 import { apiClient, parseErrorMessage } from '../services/apiClient';
-import { Project, FileTreeItem, ProjectAnalysisResponse } from '../types/api';
+import { Project, FileTreeItem, ProjectAnalysisResponse, DetectionRunResponse } from '../types/api';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -18,6 +19,7 @@ import { FileExplorer } from '../components/workspace/FileExplorer';
 import { EditorTabs, OpenTab } from '../components/workspace/EditorTabs';
 import { CodeEditor } from '../components/workspace/CodeEditor';
 import { AnalysisPanel } from '../components/analysis/AnalysisPanel';
+import { DetectionPanel } from '../components/detection/DetectionPanel';
 
 export const WorkspacePage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -59,6 +61,11 @@ export const WorkspacePage: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [editorTargetPosition, setEditorTargetPosition] = useState<{ line: number; column?: number } | null>(null);
 
+  // Phase 4: Deterministic Bug Detection State
+  const [isDetectionPanelOpen, setIsDetectionPanelOpen] = useState(false);
+  const [latestDetection, setLatestDetection] = useState<DetectionRunResponse | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+
   const activeTab = openTabs.find((t) => t.id === activeTabId);
   const activeContent = activeTabId ? tabContents[activeTabId] ?? '' : '';
   const isCurrentFileDirty = activeTabId ? tabContents[activeTabId] !== savedContents[activeTabId] : false;
@@ -83,6 +90,16 @@ export const WorkspacePage: React.FC = () => {
           setLatestAnalysis(latest);
         } catch {
           // No previous analysis exists, default clean state
+        }
+      }
+
+      // Attempt to load latest bug detection if available
+      if (typeof apiClient.getLatestDetection === 'function') {
+        try {
+          const latestDet = await apiClient.getLatestDetection(projectId);
+          setLatestDetection(latestDet);
+        } catch {
+          // No previous detection run, default clean state
         }
       }
     } catch (err: unknown) {
@@ -397,11 +414,29 @@ export const WorkspacePage: React.FC = () => {
       const res = await apiClient.analyzeProject(projectId);
       setLatestAnalysis(res);
       setIsAnalysisPanelOpen(true);
+      setIsDetectionPanelOpen(false);
     } catch (err: unknown) {
       const msg = parseErrorMessage(err, 'Codebase analysis failed. Please check logs.');
       alert(msg);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // Phase 4: Trigger Deterministic Bug Detection
+  const handleTriggerDetection = async () => {
+    if (!projectId) return;
+    setIsDetecting(true);
+    try {
+      const res = await apiClient.runBugDetection(projectId);
+      setLatestDetection(res);
+      setIsDetectionPanelOpen(true);
+      setIsAnalysisPanelOpen(false);
+    } catch (err: unknown) {
+      const msg = parseErrorMessage(err, 'Bug detection failed. Please check logs.');
+      alert(msg);
+    } finally {
+      setIsDetecting(false);
     }
   };
 
@@ -486,7 +521,10 @@ export const WorkspacePage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setIsAnalysisPanelOpen(!isAnalysisPanelOpen)}
+            onClick={() => {
+              setIsAnalysisPanelOpen(!isAnalysisPanelOpen);
+              if (!isAnalysisPanelOpen) setIsDetectionPanelOpen(false);
+            }}
             data-testid="toggle-intelligence-button"
             title="Toggle Structural Code Intelligence (Phase 3)"
             style={{
@@ -509,6 +547,39 @@ export const WorkspacePage: React.FC = () => {
                 }}
               >
                 {latestAnalysis.statistics.parsed_files}
+              </span>
+            )}
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setIsDetectionPanelOpen(!isDetectionPanelOpen);
+              if (!isDetectionPanelOpen) setIsAnalysisPanelOpen(false);
+            }}
+            data-testid="toggle-detection-button"
+            title="Toggle Deterministic Bug Detection (Phase 4)"
+            style={{
+              borderColor: isDetectionPanelOpen ? 'var(--color-red-danger)' : undefined,
+              backgroundColor: isDetectionPanelOpen ? 'var(--color-red-subtle)' : undefined,
+            }}
+          >
+            <Bug size={13} style={{ color: 'var(--color-red-danger)' }} />
+            <span>Bug Detection</span>
+            {latestDetection && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  padding: '1px 5px',
+                  borderRadius: '10px',
+                  backgroundColor: latestDetection.total_findings > 0 ? 'var(--color-red-subtle)' : 'var(--color-surface)',
+                  color: latestDetection.total_findings > 0 ? 'var(--color-red-danger)' : 'var(--color-navy-600)',
+                  fontWeight: 600,
+                  marginLeft: '2px',
+                }}
+              >
+                {latestDetection.total_findings}
               </span>
             )}
           </Button>
@@ -561,7 +632,7 @@ export const WorkspacePage: React.FC = () => {
         />
 
         {/* Right: Code Editor Pane */}
-        <main className="editor-pane" style={{ flex: isAnalysisPanelOpen ? '1 1 50%' : '1' }}>
+        <main className="editor-pane" style={{ flex: (isAnalysisPanelOpen || isDetectionPanelOpen) ? '1 1 50%' : '1' }}>
           <EditorTabs
             tabs={openTabs}
             activeTabId={activeTabId}
@@ -644,6 +715,28 @@ export const WorkspacePage: React.FC = () => {
               isAnalyzing={isAnalyzing}
               onAnalyzeProject={handleTriggerAnalysis}
               onClose={() => setIsAnalysisPanelOpen(false)}
+              onNavigateToSource={handleNavigateToSource}
+            />
+          </aside>
+        )}
+
+        {/* Phase 4 Deterministic Bug Detection Side Panel */}
+        {isDetectionPanelOpen && (
+          <aside
+            style={{
+              flex: '1 1 50%',
+              maxWidth: '680px',
+              minWidth: '380px',
+              height: '100%',
+              zIndex: 5,
+            }}
+          >
+            <DetectionPanel
+              projectId={projectId!}
+              detection={latestDetection}
+              isDetecting={isDetecting}
+              onRunDetection={handleTriggerDetection}
+              onClose={() => setIsDetectionPanelOpen(false)}
               onNavigateToSource={handleNavigateToSource}
             />
           </aside>

@@ -274,3 +274,82 @@ export interface ProjectParseRequest {
   file_paths?: string[];
   exclude_dirs?: string[];
 }
+
+// ==========================================
+// Phase 4: Deterministic Bug Detection Types
+// ==========================================
+
+export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+export type FindingCategory = 'correctness' | 'security' | 'performance' | 'maintainability' | 'suspicious';
+
+export interface Finding {
+  id: string;
+  run_id?: string | null;
+  project_id: string;
+  rule_id: string;
+  rule_name: string;
+  language: string;
+  severity: FindingSeverity;
+  confidence: number;
+  category: FindingCategory;
+  file_path: string;
+  start_line: number;
+  start_column: number;
+  end_line: number;
+  end_column: number;
+  message: string;
+  explanation: string;
+  evidence: string;
+  remediation: string;
+}
+
+export interface DetectionRuleInfo {
+  rule_id: string;
+  name: string;
+  language: string;
+  severity: FindingSeverity;
+  confidence: number;
+  category: FindingCategory;
+  description: string;
+  remediation_guide: string;
+  version: string;
+}
+
+export interface SeverityCounts {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+}
+
+export interface DetectionRunResponse {
+  run_id: string;
+  project_id: string;
+  analysis_id?: string | null;
+  status: 'completed' | 'completed_with_findings' | 'failed';
+  engine_version: string;
+  created_at: string;
+  duration_ms: number;
+  files_scanned: number;
+  total_findings: number;
+  severity_counts: SeverityCounts;
+  findings_by_category: Record<string, number>;
+  warnings: string[];
+  findings: Finding[];
+}
+
+export interface ProjectDetectionRequest {
+  file_ids?: string[];
+  file_paths?: string[];
+  rule_ids?: string[];
+  severities?: FindingSeverity[];
+  reuse_analysis?: boolean;
+}
+
+export interface FileDetectionRequest {
+  file_path: string;
+  content?: string;
+  language?: string;
+}

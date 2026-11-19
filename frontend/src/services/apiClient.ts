@@ -17,6 +17,11 @@ import {
   FileAnalysis,
   SyntaxDiagnostic,
   ProjectParseRequest,
+  DetectionRuleInfo,
+  DetectionRunResponse,
+  Finding,
+  ProjectDetectionRequest,
+  FileDetectionRequest,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -326,5 +331,38 @@ export const apiClient = {
 
   getAnalysisDiagnostics: (projectId: string, analysisId: string): Promise<SyntaxDiagnostic[]> => {
     return request<SyntaxDiagnostic[]>(`/projects/${projectId}/analysis/parse/${analysisId}/diagnostics`);
+  },
+
+  // Phase 4 Deterministic Bug Detection APIs
+  getDetectionRules: (projectId: string, severity?: string): Promise<DetectionRuleInfo[]> => {
+    const query = severity ? `?severity=${severity}` : '';
+    return request<DetectionRuleInfo[]>(`/projects/${projectId}/detection/rules${query}`);
+  },
+
+  runBugDetection: (projectId: string, payload?: ProjectDetectionRequest): Promise<DetectionRunResponse> => {
+    return request<DetectionRunResponse>(`/projects/${projectId}/detection/run`, {
+      method: 'POST',
+      body: payload ? JSON.stringify(payload) : undefined,
+    }, 120000);
+  },
+
+  getLatestDetection: (projectId: string): Promise<DetectionRunResponse> => {
+    return request<DetectionRunResponse>(`/projects/${projectId}/detection/latest`);
+  },
+
+  getDetectionRun: (projectId: string, runId: string): Promise<DetectionRunResponse> => {
+    return request<DetectionRunResponse>(`/projects/${projectId}/detection/runs/${runId}`);
+  },
+
+  getDetectionFindings: (projectId: string, runId: string, params?: Record<string, string>): Promise<Finding[]> => {
+    const q = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return request<Finding[]>(`/projects/${projectId}/detection/runs/${runId}/findings${q}`);
+  },
+
+  runFileDetection: (projectId: string, payload: FileDetectionRequest): Promise<Finding[]> => {
+    return request<Finding[]>(`/projects/${projectId}/detection/run-file`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 };

@@ -103,9 +103,10 @@ export const NewAnalysisPage: React.FC = () => {
           <span>Back to Dashboard</span>
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Badge variant="danger">PHASE 4 ACTIVE</Badge>
           <Badge variant="blue">PHASE 3 ACTIVE</Badge>
           <Badge variant="warning">PHASE 2 ROADMAP</Badge>
-          <Badge variant="neutral">Multi-Language Code Intelligence</Badge>
+          <Badge variant="neutral">Deterministic Bug Detection</Badge>
         </div>
       </div>
 
