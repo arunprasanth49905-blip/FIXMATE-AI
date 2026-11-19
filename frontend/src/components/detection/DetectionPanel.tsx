@@ -16,13 +16,16 @@ import {
   Loader2,
   MessageSquare,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
-import { DetectionRunResponse, FindingSeverity, RootCauseAnalysis } from '../../types/api';
+import { DetectionRunResponse, FindingSeverity, RootCauseAnalysis, RepairProposal } from '../../types/api';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { apiClient } from '../../services/apiClient';
 import { RootCauseAnalysisCard } from '../root_cause/RootCauseAnalysisCard';
 import { RootCauseHistoryModal } from '../root_cause/RootCauseHistoryModal';
+import { RepairProposalCard } from '../repair/RepairProposalCard';
+import { RepairHistoryModal } from '../repair/RepairHistoryModal';
 
 interface DetectionPanelProps {
   projectId: string;
@@ -53,6 +56,12 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
   const [userNotes, setUserNotes] = useState<Record<string, string>>({});
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+  // Phase 6 Safe Repair State
+  const [repairsMap, setRepairsMap] = useState<Record<string, RepairProposal>>({});
+  const [generatingRepairId, setGeneratingRepairId] = useState<string | null>(null);
+  const [repairError, setRepairError] = useState<string | null>(null);
+  const [isRepairHistoryModalOpen, setIsRepairHistoryModalOpen] = useState(false);
 
   const findings = detection?.findings || [];
   const severityCounts = detection?.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
@@ -133,6 +142,37 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
     setExpandedFindingId(analysis.finding_id);
   };
 
+  const handleGenerateRepair = async (findingId: string) => {
+    try {
+      setGeneratingRepairId(findingId);
+      setRepairError(null);
+      setExpandedFindingId(findingId);
+
+      const res = await apiClient.generateRepair(projectId, {
+        finding_id: findingId,
+      });
+
+      setRepairsMap((prev) => ({
+        ...prev,
+        [findingId]: res,
+      }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Safe patch generation failed';
+      setRepairError(msg);
+    } finally {
+      setGeneratingRepairId(null);
+    }
+  };
+
+  const handleSelectRepairFromHistory = (proposal: RepairProposal) => {
+    setRepairsMap((prev) => ({
+      ...prev,
+      [proposal.finding_id]: proposal,
+    }));
+    setExpandedFindingId(proposal.finding_id);
+    setIsRepairHistoryModalOpen(false);
+  };
+
   return (
     <div
       style={{
@@ -173,12 +213,22 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Button
             variant="secondary"
+            onClick={() => setIsRepairHistoryModalOpen(true)}
+            title="Browse Generated Repair Patches & Diffs"
+            style={{ padding: '4px 8px', fontSize: '12px' }}
+          >
+            <ShieldCheck size={12} style={{ color: '#16a34a' }} />
+            <span>Patches</span>
+          </Button>
+
+          <Button
+            variant="secondary"
             onClick={() => setIsHistoryModalOpen(true)}
             title="Browse Root Cause Analysis History"
             style={{ padding: '4px 8px', fontSize: '12px' }}
           >
             <History size={12} />
-            <span>History</span>
+            <span>RCA History</span>
           </Button>
 
           <Button
@@ -224,6 +274,31 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
             <span style={{ flex: 1 }}>{analysisError}</span>
             <button
               onClick={() => setAnalysisError(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {repairError && (
+          <div
+            style={{
+              padding: '10px 12px',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #f87171',
+              borderRadius: '6px',
+              fontSize: '12px',
+              color: '#991b1b',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <AlertCircle size={14} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{repairError}</span>
+            <button
+              onClick={() => setRepairError(null)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
             >
               <X size={12} />
@@ -348,6 +423,8 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                 const isExpanded = expandedFindingId === finding.id;
                 const isAnalyzing = analyzingFindingId === finding.id;
                 const analysis = analysesMap[finding.id];
+                const repair = repairsMap[finding.id];
+                const isGeneratingRepair = generatingRepairId === finding.id;
                 const showNotes = showNotesFindingId === finding.id;
 
                 return (
@@ -408,6 +485,23 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                                 <Sparkles size={10} /> AI Analyzed ({analysis.confidence_assessment.confidence_score}%)
                               </span>
                             )}
+                            {repair && (
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  backgroundColor: '#dcfce7',
+                                  color: '#166534',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                <ShieldCheck size={10} /> Patch Proposed
+                              </span>
+                            )}
                           </div>
 
                           <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--color-navy-900)', lineHeight: '1.4' }}>
@@ -424,6 +518,33 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {/* Phase 6 Safe Repair Button */}
+                        <Button
+                          variant={repair ? 'secondary' : 'secondary'}
+                          data-testid={`repair-btn-${finding.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (repair) {
+                              setExpandedFindingId(finding.id);
+                            } else {
+                              handleGenerateRepair(finding.id);
+                            }
+                          }}
+                          disabled={isGeneratingRepair}
+                          isLoading={isGeneratingRepair}
+                          title={repair ? 'View Generated Patch Proposal' : 'Synthesize Safe Patch Proposal with Gemini'}
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            backgroundColor: repair ? '#f0fdf4' : undefined,
+                            borderColor: repair ? '#bbf7d0' : undefined,
+                            color: repair ? '#166534' : undefined,
+                          }}
+                        >
+                          <ShieldCheck size={11} />
+                          <span>{isGeneratingRepair ? 'Fixing...' : repair ? 'View Patch' : 'Fix with AI'}</span>
+                        </Button>
+
                         {/* Root Cause Action Button */}
                         <Button
                           variant={analysis ? 'secondary' : 'primary'}
@@ -585,6 +706,51 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                                 })
                               }
                               onNavigateToFile={(path, line) => onNavigateToSource(path, line, 1)}
+                              onGenerateRepair={() => handleGenerateRepair(finding.id)}
+                              isGeneratingRepair={isGeneratingRepair}
+                              hasRepairProposal={Boolean(repair)}
+                            />
+                          </div>
+                        )}
+
+                        {/* Phase 6 Safe Patch Synthesizer Loading State */}
+                        {isGeneratingRepair && (
+                          <div
+                            style={{
+                              padding: '24px 16px',
+                              textAlign: 'center',
+                              backgroundColor: '#f0fdf4',
+                              borderRadius: '8px',
+                              border: '1px solid #bbf7d0',
+                              marginTop: '8px',
+                            }}
+                          >
+                            <Loader2 size={24} className="animate-spin" style={{ color: '#16a34a', margin: '0 auto 8px' }} />
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#14532d' }}>
+                              Synthesizing Safe Patch with Gemini 3.5 Flash Lite...
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#166534', marginTop: '2px' }}>
+                              Constructing targeted diff, verifying reversibility, running syntax AST validation
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Phase 6 Render Safe Repair Proposal Card */}
+                        {repair && (
+                          <div style={{ marginTop: '8px' }}>
+                            <RepairProposalCard
+                              proposal={repair}
+                              onClose={() =>
+                                setRepairsMap((prev) => {
+                                  const copy = { ...prev };
+                                  delete copy[finding.id];
+                                  return copy;
+                                })
+                              }
+                              onNavigateToFile={(path, line) => onNavigateToSource(path, line, 1)}
+                              onRegenerate={() => handleGenerateRepair(finding.id)}
+                              onOpenHistory={() => setIsRepairHistoryModalOpen(true)}
+                              isRegenerating={isGeneratingRepair}
                             />
                           </div>
                         )}
@@ -598,12 +764,20 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
         )}
       </div>
 
-      {/* History Modal */}
+      {/* RCA History Modal */}
       <RootCauseHistoryModal
         isOpen={isHistoryModalOpen}
         projectId={projectId}
         onClose={() => setIsHistoryModalOpen(false)}
         onSelectAnalysis={handleSelectFromHistory}
+      />
+
+      {/* Phase 6 Safe Repair History Modal */}
+      <RepairHistoryModal
+        isOpen={isRepairHistoryModalOpen}
+        projectId={projectId}
+        onClose={() => setIsRepairHistoryModalOpen(false)}
+        onSelectProposal={handleSelectRepairFromHistory}
       />
     </div>
   );

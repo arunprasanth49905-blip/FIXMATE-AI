@@ -13,6 +13,9 @@ import {
   Clock,
   Cpu,
   Terminal,
+  ShieldCheck,
+  FileDiff,
+  RotateCw,
 } from 'lucide-react';
 import { RootCauseAnalysis } from '../../types/api';
 
@@ -20,12 +23,18 @@ interface RootCauseAnalysisCardProps {
   analysis: RootCauseAnalysis;
   onClose?: () => void;
   onNavigateToFile?: (path: string, line: number) => void;
+  onGenerateRepair?: () => void;
+  isGeneratingRepair?: boolean;
+  hasRepairProposal?: boolean;
 }
 
 export const RootCauseAnalysisCard: React.FC<RootCauseAnalysisCardProps> = ({
   analysis,
   onClose,
   onNavigateToFile,
+  onGenerateRepair,
+  isGeneratingRepair = false,
+  hasRepairProposal = false,
 }) => {
   const [copiedOriginal, setCopiedOriginal] = useState(false);
   const [copiedCorrected, setCopiedCorrected] = useState(false);
@@ -749,6 +758,75 @@ export const RootCauseAnalysisCard: React.FC<RootCauseAnalysisCardProps> = ({
             >
               {correctionExplanation}
             </p>
+          </div>
+        )}
+
+        {/* Phase 6 Safe Patch Generation CTA */}
+        {onGenerateRepair && (
+          <div
+            style={{
+              padding: '12px 14px',
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: 'var(--radius-md, 8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: '#166534',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <ShieldCheck size={15} />
+                <span>Phase 6: Safe Patch & Diff Engine</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
+                Generate an in-memory unified diff and syntax-validated patch without modifying disk files.
+              </div>
+            </div>
+            <button
+              onClick={onGenerateRepair}
+              disabled={isGeneratingRepair}
+              data-testid="generate-patch-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                backgroundColor: hasRepairProposal ? '#15803d' : '#16a34a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: isGeneratingRepair ? 'not-allowed' : 'pointer',
+                opacity: isGeneratingRepair ? 0.7 : 1,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isGeneratingRepair ? (
+                <>
+                  <RotateCw size={13} className="animate-spin" />
+                  <span>Generating Patch...</span>
+                </>
+              ) : (
+                <>
+                  <FileDiff size={13} />
+                  <span>{hasRepairProposal ? 'Regenerate Patch' : 'Generate Safe Patch'}</span>
+                </>
+              )}
+            </button>
           </div>
         )}
 

@@ -7,6 +7,7 @@ FIXMATE AI is an advanced AI-powered software bug detection and autonomous code 
 - **Phase 3:** Multi-Language Code Parsing & Structural Intelligence Engine — Real AST and syntax-tree parsing without execution for Python (`ast`), JavaScript (`tree-sitter-javascript`), and TypeScript/TSX (`tree-sitter-typescript`), deep symbol extraction, syntax diagnostics detection, project-level metrics, and Monaco Editor deep navigation.
 - **Phase 4:** Deterministic Bug Detection Engine — Static, zero-execution rule engine with 20 deterministic rules across Python, JavaScript, and TypeScript, calibrated confidence scoring, code evidence extraction, actionable remediation, and Monaco Editor line/column deep navigation.
 - **Phase 5:** AI Root Cause Analysis Engine — Deep semantic investigation powered by Google Gemini (`google-genai` SDK) analyzing deterministic findings without executing code. Features dual-severity comparison (authoritative static vs AI assessed), calibrated confidence scoring (0-100), root cause breakdown, execution/state impact, failure consequences, conceptual guidance (strictly no code patches), secret redaction, and SQLite analysis history.
+- **Phase 6:** Intelligent Code Repair & Safe Patch Generation Engine — Safe patch synthesis powered by Google Gemini 3.5 Flash Lite (`gemini-3.5-flash-lite`). Produces in-memory unified diffs with line-level indentation preservation, SHA-256 source freshness fingerprinting, multi-layer deterministic validation (AST syntax parsing, patch reversibility, path confinement), and interactive review in Monaco without writing to disk files.
 
 ---
 
@@ -51,7 +52,8 @@ FIXMATE AI/
 │   │   │   ├── project.py              # Project and ProjectFile SQLAlchemy models
 │   │   │   ├── analysis.py             # ProjectAnalysis and FileAnalysisRecord models
 │   │   │   ├── detection.py            # DetectionRun and DetectionFinding SQLAlchemy models
-│   │   │   └── root_cause.py           # RootCauseAnalysis SQLAlchemy model
+│   │   │   ├── root_cause.py           # RootCauseAnalysis SQLAlchemy model
+│   │   │   └── repair.py               # Phase 6 RepairProposal SQLAlchemy model
 │   │   ├── api/v1/
 │   │   │   ├── router.py               # API v1 router aggregation
 │   │   │   └── endpoints/
@@ -61,7 +63,8 @@ FIXMATE AI/
 │   │   │       ├── files.py            # File tree, create, edit, rename, delete, upload
 │   │   │       ├── parsing.py          # AST parsing, project analysis, diagnostics APIs
 │   │   │       ├── detection.py        # Bug detection runs, findings, rules catalog APIs
-│   │   │       └── root_cause.py       # AI Root Cause Analysis, history, and single finding RCA APIs
+│   │   │       ├── root_cause.py       # AI Root Cause Analysis, history, and single finding RCA APIs
+│   │   │       └── repair.py           # Phase 6 Safe Patch Generation, history, and proposal APIs
 │   │   ├── schemas/                    # Pydantic data schemas
 │   │   │   ├── health.py
 │   │   │   ├── system.py
@@ -70,7 +73,8 @@ FIXMATE AI/
 │   │   │   ├── file.py
 │   │   │   ├── parsing.py              # AST symbols, diagnostics, statistics, responses
 │   │   │   ├── detection.py            # Finding, DetectionRunResponse, rules schemas
-│   │   │   └── root_cause.py           # RootCauseAnalysisResponse, history, confidence schemas
+│   │   │   ├── root_cause.py           # RootCauseAnalysisResponse, history, confidence schemas
+│   │   │   └── repair.py               # Phase 6 PatchValidationDetails, RepairProposal schemas
 │   │   └── services/
 │   │       ├── gemini_service.py       # Google GenAI SDK integration & error sanitization
 │   │       ├── project_service.py      # Project creation, listing, updating, deletion
@@ -92,15 +96,23 @@ FIXMATE AI/
 │   │       │   └── rules/
 │   │       │       ├── python_rules.py     # 10 deterministic Python rules (PY-W001..W010)
 │   │       │       └── javascript_rules.py # 10 deterministic JS/TS rules (JS-W001..W010)
-│   │       └── root_cause/             # Phase 5 AI Root Cause Analysis Engine
-│   │           ├── root_cause_context.py   # Context extraction, padding, secret redaction, 8k cap
-│   │           ├── root_cause_prompt_builder.py # Delimiter safety, anti-injection, schema prompt
-│   │           ├── root_cause_engine.py    # Gemini client, structured JSON parser, calibrated confidence
-│   │           └── root_cause_service.py   # Business logic, SQLite CRUD, dual severity comparison
+│   │       ├── root_cause/             # Phase 5 AI Root Cause Analysis Engine
+│   │       │   ├── root_cause_context.py   # Context extraction, padding, secret redaction, 8k cap
+│   │       │   ├── root_cause_prompt_builder.py # Delimiter safety, anti-injection, schema prompt
+│   │       │   ├── root_cause_engine.py    # Gemini client, structured JSON parser, calibrated confidence
+│   │       │   └── root_cause_service.py   # Business logic, SQLite CRUD, dual severity comparison
+│   │       └── repair/                 # Phase 6 Safe Patch Generation Engine
+│   │           ├── repair_context.py       # Source SHA-256 fingerprinting, evidence slice, redaction
+│   │           ├── repair_prompt_builder.py# 18 AI instructions, anti-injection, JSON schema
+│   │           ├── repair_engine.py        # Gemini 3.5 Flash Lite synthesis & transient 503 retry
+│   │           ├── patch_generator.py      # Unified diff construction & indentation preservation
+│   │           ├── patch_validator.py      # Freshness, path security, reversibility, AST syntax
+│   │           └── repair_service.py       # Orchestrator, SQLite persistence, staleness check
 │   ├── data/                           # Local SQLite database & isolated workspaces (gitignored)
 │   │   ├── fixmate.db
 │   │   └── workspaces/{project_id}/...
-│   ├── tests/                          # 81 Pytest unit and integration tests
+│   ├── tests/                          # 100 Pytest unit and integration tests (100% pass)
+│   │   ├── test_repair.py              # Phase 6 comprehensive patch engine test suite
 │   ├── requirements.txt                # tree-sitter, tree-sitter-javascript, tree-sitter-typescript
 │   └── .env.example
 ├── frontend/
@@ -112,6 +124,11 @@ FIXMATE AI/
 │   │   │   ├── dashboard/              # SystemStatus, GeminiTest, Metrics, Activity
 │   │   │   ├── workspace/              # FileExplorer, EditorTabs, CodeEditor, FileIcon
 │   │   │   ├── analysis/               # AnalysisPanel, AnalysisSummaryCard, StructuralViewer
+│   │   │   ├── detection/              # DetectionPanel, RulesModal
+│   │   │   ├── root_cause/             # RootCauseAnalysisCard, RootCauseHistoryModal
+│   │   │   └── repair/                 # Phase 6 RepairProposalCard, RepairHistoryModal
+│   │   ├── test/                       # 48 Vitest frontend tests (100% pass)
+│   │   │   └── RepairProposal.test.tsx # Phase 6 UI and workflow unit tests
 │   │   │   ├── detection/              # DetectionPanel (Findings list, filters, Monaco jump)
 │   │   │   └── root_cause/             # RootCauseAnalysisCard, RootCauseHistoryModal
 │   │   ├── pages/                      # DashboardPage, ProjectsPage, WorkspacePage, NewAnalysisPage

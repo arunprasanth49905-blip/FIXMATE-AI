@@ -456,3 +456,72 @@ export interface RootCauseHistoryResponse {
   analyses: RootCauseHistoryItem[];
 }
 
+// ==========================================
+// Phase 6: Intelligent Code Repair Types
+// ==========================================
+
+export interface ValidationCheck {
+  name: string;
+  status: 'passed' | 'failed' | 'warning';
+  message: string;
+  details?: string;
+}
+
+export interface PatchValidationDetails {
+  checks: ValidationCheck[];
+  overall_status: 'passed' | 'failed' | 'warning';
+  is_syntactically_valid: boolean;
+  is_reversible: boolean;
+  is_scope_valid: boolean;
+  validation_errors: string[];
+}
+
+export interface GenerateRepairRequest {
+  finding_id: string;
+  custom_instructions?: string;
+}
+
+export interface RepairProposal {
+  id: string;
+  project_id: string;
+  finding_id: string;
+  root_cause_analysis_id?: string | null;
+
+  rule_id: string;
+  rule_name: string;
+  language: string;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+
+  source_fingerprint: string;
+  is_stale: boolean;
+
+  repair_status: 'generated' | 'needs_clarification' | 'rejected_by_validation' | 'stale_source' | 'generation_failed' | string;
+  repair_summary: string;
+  repair_explanation: string;
+  original_code: string;
+  proposed_code: string;
+
+  diff: string;
+  additions: number;
+  deletions: number;
+
+  assumptions: string[];
+  confidence_score: number;
+
+  validation_status: 'passed' | 'failed' | 'warning' | string;
+  validation_details: PatchValidationDetails;
+
+  model: string;
+  duration_ms: number;
+  created_at: string;
+  error_message?: string | null;
+}
+
+export interface RepairHistoryResponse {
+  project_id: string;
+  total: number;
+  proposals: RepairProposal[];
+}
+

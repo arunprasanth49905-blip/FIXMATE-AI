@@ -25,6 +25,9 @@ import {
   RootCauseAnalysis,
   AnalyzeFindingRequest,
   RootCauseHistoryResponse,
+  GenerateRepairRequest,
+  RepairProposal,
+  RepairHistoryResponse,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -396,6 +399,36 @@ export const apiClient = {
 
   deleteRootCause: (projectId: string, analysisId: string): Promise<{ deleted: boolean; analysis_id: string }> => {
     return request<{ deleted: boolean; analysis_id: string }>(`/projects/${projectId}/root-cause/${analysisId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Phase 6 Intelligent Code Repair APIs
+  generateRepair: (projectId: string, payload: GenerateRepairRequest): Promise<RepairProposal> => {
+    return request<RepairProposal>(`/projects/${projectId}/repair/generate`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, 60000);
+  },
+
+  getRepairProposal: (projectId: string, proposalId: string): Promise<RepairProposal> => {
+    return request<RepairProposal>(`/projects/${projectId}/repair/${proposalId}`);
+  },
+
+  getRepairForFinding: (projectId: string, findingId: string): Promise<RepairProposal | null> => {
+    return request<RepairProposal | null>(`/projects/${projectId}/repair/finding/${findingId}`);
+  },
+
+  getRepairHistory: (projectId: string, findingId?: string, limit?: number): Promise<RepairHistoryResponse> => {
+    const params = new URLSearchParams();
+    if (findingId) params.append('finding_id', findingId);
+    if (limit) params.append('limit', String(limit));
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return request<RepairHistoryResponse>(`/projects/${projectId}/repair/history${q}`);
+  },
+
+  deleteRepairProposal: (projectId: string, proposalId: string): Promise<{ deleted: boolean; proposal_id: string }> => {
+    return request<{ deleted: boolean; proposal_id: string }>(`/projects/${projectId}/repair/${proposalId}`, {
       method: 'DELETE',
     });
   },
