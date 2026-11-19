@@ -11,7 +11,7 @@ import {
   FolderOpen,
   FileCode,
 } from 'lucide-react';
-import { apiClient } from '../services/apiClient';
+import { apiClient, parseErrorMessage } from '../services/apiClient';
 import { Project } from '../types/api';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
@@ -45,7 +45,7 @@ export const ProjectsPage: React.FC = () => {
       const res = await apiClient.getProjects(search);
       setProjects(res.projects);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to fetch projects';
+      const msg = parseErrorMessage(err, 'Failed to fetch projects. Please try again.');
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -100,7 +100,7 @@ export const ProjectsPage: React.FC = () => {
       // Navigate straight into the new workspace
       navigate(`/projects/${newProj.id}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create project';
+      const msg = parseErrorMessage(err, 'Failed to create project. Please try again.');
       setFormError(msg);
     } finally {
       setIsSubmitting(false);
@@ -131,7 +131,7 @@ export const ProjectsPage: React.FC = () => {
       setIsRenameModalOpen(false);
       setSelectedProject(null);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to update project';
+      const msg = parseErrorMessage(err, 'Failed to update project. Please try again.');
       setFormError(msg);
     } finally {
       setIsSubmitting(false);
@@ -154,7 +154,7 @@ export const ProjectsPage: React.FC = () => {
       setIsDeleteModalOpen(false);
       setSelectedProject(null);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to delete project');
+      alert(parseErrorMessage(err, 'Failed to delete project. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }

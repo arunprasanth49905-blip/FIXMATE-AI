@@ -28,6 +28,103 @@ export class ApiClientError extends Error {
   }
 }
 
+/**
+ * Safely extracts a human-readable error string from any error object,
+ * Pydantic/FastAPI validation detail array, Axios/Fetch response, or Error instance.
+ * Guarantees that "[object Object]" is never returned.
+ */
+export function parseErrorMessage(errorData: unknown, defaultMessage = 'An unexpected error occurred'): string {
+  if (!errorData) {
+    return defaultMessage;
+  }
+
+  // 1. Direct string
+  if (typeof errorData === 'string') {
+    const trimmed = errorData.trim();
+    if (trimmed && trimmed !== '[object Object]') {
+      return trimmed.startsWith('Value error, ') ? trimmed.replace('Value error, ', '') : trimmed;
+    }
+    return defaultMessage;
+  }
+
+  // 2. ApiClientError or standard Error instance
+  if (errorData instanceof Error) {
+    if (errorData.message && errorData.message !== '[object Object]') {
+      return errorData.message.startsWith('Value error, ')
+        ? errorData.message.replace('Value error, ', '')
+        : errorData.message;
+    }
+  }
+
+  // 3. Object / JSON responses
+  if (typeof errorData === 'object') {
+    const obj = errorData as Record<string, unknown>;
+
+    // Case 3a: FastAPI / Pydantic validation error array: detail: [{ msg: "...", loc: [...] }]
+    if (Array.isArray(obj.detail)) {
+      const messages = obj.detail
+        .map((item) => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item === 'object') {
+            const dict = item as Record<string, unknown>;
+            let msg = typeof dict.msg === 'string' ? dict.msg : '';
+            if (msg.startsWith('Value error, ')) {
+              msg = msg.replace('Value error, ', '');
+            }
+            if (Array.isArray(dict.loc) && dict.loc.length > 0) {
+              const field = dict.loc[dict.loc.length - 1];
+              if (field && typeof field === 'string' && field !== 'body' && !msg.toLowerCase().includes(field.toLowerCase())) {
+                return `${field}: ${msg}`;
+              }
+            }
+            return msg || '';
+          }
+          return '';
+        })
+        .filter((m): m is string => Boolean(m && m !== '[object Object]'));
+
+      if (messages.length > 0) {
+        return messages.join('. ');
+      }
+    }
+
+    // Case 3b: detail string
+    if (typeof obj.detail === 'string' && obj.detail.trim() && obj.detail !== '[object Object]') {
+      const detailStr = obj.detail.trim();
+      return detailStr.startsWith('Value error, ') ? detailStr.replace('Value error, ', '') : detailStr;
+    }
+
+    // Case 3c: message field
+    if (typeof obj.message === 'string' && obj.message.trim() && obj.message !== '[object Object]') {
+      return obj.message.trim();
+    }
+
+    // Case 3d: error string or nested error object
+    if (typeof obj.error === 'string' && obj.error.trim() && obj.error !== '[object Object]') {
+      return obj.error.trim();
+    }
+    if (obj.error && typeof obj.error === 'object') {
+      const nested = obj.error as Record<string, unknown>;
+      if (typeof nested.message === 'string' && nested.message.trim() && nested.message !== '[object Object]') {
+        return nested.message.trim();
+      }
+    }
+
+    // Case 3e: errors array
+    if (Array.isArray(obj.errors) && obj.errors.length > 0) {
+      const first = obj.errors[0];
+      if (typeof first === 'string') return first;
+      if (first && typeof first === 'object') {
+        const firstObj = first as Record<string, unknown>;
+        if (typeof firstObj.msg === 'string') return firstObj.msg;
+        if (typeof firstObj.message === 'string') return firstObj.message;
+      }
+    }
+  }
+
+  return defaultMessage;
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}, timeoutMs = 10000): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -58,14 +155,21 @@ async function request<T>(endpoint: string, options: RequestInit = {}, timeoutMs
     }
 
     if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      let defaultMsg = `HTTP ${response.status}: ${response.statusText}`;
+      if (response.status === 400) defaultMsg = 'Invalid file path or parameters.';
+      else if (response.status === 403) defaultMsg = 'Path traversal is not allowed.';
+      else if (response.status === 404) defaultMsg = 'Resource not found.';
+      else if (response.status === 409) defaultMsg = 'File or folder already exists.';
+      else if (response.status === 413) defaultMsg = 'File exceeds maximum allowed upload size.';
+      else if (response.status === 422) defaultMsg = 'Invalid file path or validation failed.';
+
       let errorDetails: unknown = null;
+      let errorMessage = defaultMsg;
+
       try {
         const errorJson = await response.json();
-        if (errorJson && typeof errorJson === 'object') {
-          errorMessage = (errorJson as { detail?: string }).detail || errorMessage;
-          errorDetails = errorJson;
-        }
+        errorDetails = errorJson;
+        errorMessage = parseErrorMessage(errorJson, defaultMsg);
       } catch {
         // Fall back to default status text if not JSON
       }
@@ -85,8 +189,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}, timeoutMs
       throw new ApiClientError('Request timed out. Backend did not respond in time.', 408);
     }
 
-    const message = err instanceof Error ? err.message : 'Network request failed';
-    throw new ApiClientError(`Connection failed: ${message}`, 0);
+    const netMessage = err instanceof Error ? err.message : 'Network request failed';
+    throw new ApiClientError(`Unable to connect to backend: ${netMessage}`, 0);
   }
 }
 

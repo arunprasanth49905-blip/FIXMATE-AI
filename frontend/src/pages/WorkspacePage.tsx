@@ -8,7 +8,7 @@ import {
   Code2,
   AlertCircle,
 } from 'lucide-react';
-import { apiClient } from '../services/apiClient';
+import { apiClient, parseErrorMessage } from '../services/apiClient';
 import { Project, FileTreeItem } from '../types/api';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
@@ -68,7 +68,7 @@ export const WorkspacePage: React.FC = () => {
       setProject(projData);
       setFiles(filesData);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load workspace';
+      const msg = parseErrorMessage(err, 'Failed to load workspace.');
       setProjectError(msg);
     } finally {
       setIsLoadingProject(false);
@@ -110,7 +110,7 @@ export const WorkspacePage: React.FC = () => {
       setSavedContents((prev) => ({ ...prev, [item.id]: content }));
       setTabBinaryStatus((prev) => ({ ...prev, [item.id]: res.is_binary }));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to read file content';
+      const msg = parseErrorMessage(err, 'Failed to read file content.');
       setFileError(msg);
     } finally {
       setIsLoadingFile(false);
@@ -184,7 +184,7 @@ export const WorkspacePage: React.FC = () => {
       const updatedFiles = await apiClient.getProjectFiles(projectId, true) as FileTreeItem[];
       setFiles(updatedFiles);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to save file');
+      alert(parseErrorMessage(err, 'Failed to save file. Please try again.'));
     } finally {
       setIsSaving(false);
     }
@@ -241,7 +241,7 @@ export const WorkspacePage: React.FC = () => {
         extension: created.extension,
       });
     } catch (err: unknown) {
-      setModalError(err instanceof Error ? err.message : 'Failed to create file');
+      setModalError(parseErrorMessage(err, 'File creation failed. Please try again.'));
     }
   };
 
@@ -271,7 +271,7 @@ export const WorkspacePage: React.FC = () => {
       const updatedFiles = await apiClient.getProjectFiles(projectId!, true) as FileTreeItem[];
       setFiles(updatedFiles);
     } catch (err: unknown) {
-      setModalError(err instanceof Error ? err.message : 'Failed to create folder');
+      setModalError(parseErrorMessage(err, 'Folder creation failed. Please try again.'));
     }
   };
 
@@ -305,7 +305,7 @@ export const WorkspacePage: React.FC = () => {
       const updatedFiles = await apiClient.getProjectFiles(projectId!, true) as FileTreeItem[];
       setFiles(updatedFiles);
     } catch (err: unknown) {
-      setModalError(err instanceof Error ? err.message : 'Failed to rename item');
+      setModalError(parseErrorMessage(err, 'Failed to rename item. Please try again.'));
     }
   };
 
@@ -330,7 +330,7 @@ export const WorkspacePage: React.FC = () => {
       const updatedFiles = await apiClient.getProjectFiles(projectId!, true) as FileTreeItem[];
       setFiles(updatedFiles);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to delete item');
+      alert(parseErrorMessage(err, 'Failed to delete item. Please try again.'));
     }
   };
 
@@ -352,7 +352,7 @@ export const WorkspacePage: React.FC = () => {
       const updatedFiles = await apiClient.getProjectFiles(projectId!, true) as FileTreeItem[];
       setFiles(updatedFiles);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Upload failed');
+      alert(parseErrorMessage(err, 'Upload failed. Please try again.'));
     } finally {
       e.target.value = '';
     }
@@ -367,7 +367,7 @@ export const WorkspacePage: React.FC = () => {
       setProject(updated);
       setIsRenameProjectModalOpen(false);
     } catch (err: unknown) {
-      setModalError(err instanceof Error ? err.message : 'Failed to rename project');
+      setModalError(parseErrorMessage(err, 'Failed to rename project. Please try again.'));
     }
   };
 

@@ -156,6 +156,47 @@ def test_file_upload(client, test_project):
     assert len(data["errors"]) == 0
 
 
+def test_exact_security_verification_and_regression(client, test_project):
+    """Verify exact path traversal scenario and regression as required by Phase 2 security check."""
+    from pathlib import Path
+    import os
+
+    # 1. Test exact malicious path '../../outside.py'
+    malicious_path = "../../outside.py"
+    resp = client.post(
+        f"/api/v1/projects/{test_project}/files",
+        json={"path": malicious_path, "content": "malicious payload"}
+    )
+    assert resp.status_code in [400, 422], f"Expected 400 or 422, got {resp.status_code}"
+    err_data = resp.json()
+    assert "detail" in err_data
+    assert isinstance(err_data["detail"], str)
+    assert "Path traversal" in err_data["detail"] or "traversal" in err_data["detail"].lower()
+
+    # Verify no outside.py was created outside project workspace or in workspace root
+    workspace_dir = Path(settings.WORKSPACE_ROOT).resolve()
+    assert not (workspace_dir / "outside.py").exists(), "Malicious file created in workspace root!"
+    assert not (workspace_dir.parent / "outside.py").exists(), "Malicious file created in backend root!"
+    assert not (Path("outside.py").resolve()).exists(), "Malicious file created in working directory!"
+
+    # 2. Verify normal file creation works for: normal_test.py, test.js, README.md
+    for normal_name in ["normal_test.py", "test.js", "README.md"]:
+        create_resp = client.post(
+            f"/api/v1/projects/{test_project}/files",
+            json={"path": normal_name, "content": f"# content for {normal_name}"}
+        )
+        assert create_resp.status_code == 201, f"Failed creating {normal_name}: {create_resp.text}"
+        data = create_resp.json()
+        assert data["name"] == normal_name
+        assert data["path"] == normal_name
+
+        # Read back
+        file_id = data["id"]
+        get_resp = client.get(f"/api/v1/projects/{test_project}/files/{file_id}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["content"] == f"# content for {normal_name}"
+
+
 def test_oversized_upload_handling(client, test_project):
     # Create content larger than max upload limit
     original_limit = settings.MAX_UPLOAD_SIZE_BYTES

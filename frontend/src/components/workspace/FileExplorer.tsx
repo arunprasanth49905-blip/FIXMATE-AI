@@ -165,6 +165,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
         <div className="file-explorer-actions">
           <button
             type="button"
+            data-testid="new-file-button"
             className="icon-btn"
             title="Create New File"
             onClick={() => onCreateFile()}

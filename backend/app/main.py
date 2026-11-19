@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -58,6 +60,29 @@ def root():
         "docs": "/docs",
         "health": f"{settings.API_V1_PREFIX}/health",
     }
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    messages = []
+    for err in errors:
+        msg = err.get("msg", "Invalid input")
+        if msg.startswith("Value error, "):
+            msg = msg.replace("Value error, ", "")
+        loc = err.get("loc", [])
+        field = loc[-1] if loc else ""
+        if field and field != "body" and not msg.lower().startswith(str(field).lower()):
+            messages.append(f"{field}: {msg}")
+        else:
+            messages.append(msg)
+
+    readable_msg = ". ".join(messages) if messages else "Invalid request data"
+    logger.warning(f"Validation error on {request.method} {request.url.path}: {readable_msg}")
+    return JSONResponse(
+        status_code=422,
+        content=jsonable_encoder({"detail": readable_msg, "errors": errors}),
+    )
 
 
 @app.exception_handler(HTTPException)
