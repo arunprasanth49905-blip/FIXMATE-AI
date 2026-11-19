@@ -353,3 +353,85 @@ export interface FileDetectionRequest {
   content?: string;
   language?: string;
 }
+
+// ==========================================
+// Phase 5: AI Root Cause Analysis Types
+// ==========================================
+
+export interface SeverityAssessment {
+  detected_severity: FindingSeverity | string;
+  ai_assessed_severity: FindingSeverity | string;
+  severity_reasoning: string;
+  severity_changed: boolean;
+}
+
+export interface ConfidenceAssessment {
+  confidence_score: number;
+  confidence_level: 'HIGH' | 'MEDIUM' | 'LOW' | string;
+  confidence_reason: string;
+  limitations: string[];
+}
+
+export interface RootCauseAnalysis {
+  id: string;
+  project_id: string;
+  finding_id: string;
+  detection_run_id?: string | null;
+  rule_id: string;
+  rule_name: string;
+  language: string;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  model: string;
+  created_at: string;
+  duration_ms: number;
+  status: 'success' | 'failed' | string;
+
+  summary: string;
+  bug_explanation: string;
+  root_cause: string;
+  technical_reasoning: string;
+  trigger_conditions: string[];
+  execution_impact: string;
+  potential_consequences: string[];
+
+  severity_assessment: SeverityAssessment;
+  recommended_approach: string;
+  prevention: string;
+  missing_context: string[];
+
+  confidence_assessment: ConfidenceAssessment;
+  error_message?: string | null;
+}
+
+export interface AnalyzeFindingRequest {
+  finding_id: string;
+  include_surrounding_context?: boolean;
+  custom_user_notes?: string;
+}
+
+export interface RootCauseHistoryItem {
+  id: string;
+  project_id: string;
+  finding_id: string;
+  rule_id: string;
+  rule_name: string;
+  file_path: string;
+  start_line: number;
+  summary: string;
+  detected_severity: string;
+  ai_assessed_severity: string;
+  confidence_score: number;
+  confidence_level: string;
+  created_at: string;
+  duration_ms: number;
+  status: string;
+}
+
+export interface RootCauseHistoryResponse {
+  project_id: string;
+  total: number;
+  analyses: RootCauseHistoryItem[];
+}
+

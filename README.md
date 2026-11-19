@@ -6,6 +6,7 @@ FIXMATE AI is an advanced AI-powered software bug detection and autonomous code 
 - **Phase 2:** Project Management & Code Workspace — SQLite database persistence, secure file workspace storage, path traversal protection, interactive Monaco Editor, file tree navigation, and multi-file tab system.
 - **Phase 3:** Multi-Language Code Parsing & Structural Intelligence Engine — Real AST and syntax-tree parsing without execution for Python (`ast`), JavaScript (`tree-sitter-javascript`), and TypeScript/TSX (`tree-sitter-typescript`), deep symbol extraction, syntax diagnostics detection, project-level metrics, and Monaco Editor deep navigation.
 - **Phase 4:** Deterministic Bug Detection Engine — Static, zero-execution rule engine with 20 deterministic rules across Python, JavaScript, and TypeScript, calibrated confidence scoring, code evidence extraction, actionable remediation, and Monaco Editor line/column deep navigation.
+- **Phase 5:** AI Root Cause Analysis Engine — Deep semantic investigation powered by Google Gemini (`google-genai` SDK) analyzing deterministic findings without executing code. Features dual-severity comparison (authoritative static vs AI assessed), calibrated confidence scoring (0-100), root cause breakdown, execution/state impact, failure consequences, conceptual guidance (strictly no code patches), secret redaction, and SQLite analysis history.
 
 ---
 
@@ -49,7 +50,8 @@ FIXMATE AI/
 │   │   │   ├── __init__.py
 │   │   │   ├── project.py              # Project and ProjectFile SQLAlchemy models
 │   │   │   ├── analysis.py             # ProjectAnalysis and FileAnalysisRecord models
-│   │   │   └── detection.py            # DetectionRun and DetectionFinding SQLAlchemy models
+│   │   │   ├── detection.py            # DetectionRun and DetectionFinding SQLAlchemy models
+│   │   │   └── root_cause.py           # RootCauseAnalysis SQLAlchemy model
 │   │   ├── api/v1/
 │   │   │   ├── router.py               # API v1 router aggregation
 │   │   │   └── endpoints/
@@ -58,7 +60,8 @@ FIXMATE AI/
 │   │   │       ├── projects.py         # CRUD /api/v1/projects
 │   │   │       ├── files.py            # File tree, create, edit, rename, delete, upload
 │   │   │       ├── parsing.py          # AST parsing, project analysis, diagnostics APIs
-│   │   │       └── detection.py        # Bug detection runs, findings, rules catalog APIs
+│   │   │       ├── detection.py        # Bug detection runs, findings, rules catalog APIs
+│   │   │       └── root_cause.py       # AI Root Cause Analysis, history, and single finding RCA APIs
 │   │   ├── schemas/                    # Pydantic data schemas
 │   │   │   ├── health.py
 │   │   │   ├── system.py
@@ -66,7 +69,8 @@ FIXMATE AI/
 │   │   │   ├── project.py
 │   │   │   ├── file.py
 │   │   │   ├── parsing.py              # AST symbols, diagnostics, statistics, responses
-│   │   │   └── detection.py            # Finding, DetectionRunResponse, rules schemas
+│   │   │   ├── detection.py            # Finding, DetectionRunResponse, rules schemas
+│   │   │   └── root_cause.py           # RootCauseAnalysisResponse, history, confidence schemas
 │   │   └── services/
 │   │       ├── gemini_service.py       # Google GenAI SDK integration & error sanitization
 │   │       ├── project_service.py      # Project creation, listing, updating, deletion
@@ -80,18 +84,23 @@ FIXMATE AI/
 │   │       │   ├── parser_limits.py    # Resource thresholds (1MB, 500 files, 25MB)
 │   │       │   ├── syntax_diagnostics.py# Error node converter & diagnostics builder
 │   │       │   └── project_analysis_service.py # Full workspace scanner & SQLite persistence
-│   │       └── detection/              # Phase 4 Deterministic Bug Detection Engine
-│   │           ├── base_rule.py        # Abstract BaseRule interface
-│   │           ├── rule_context.py     # RuleContext encapsulation (AST, source, analysis)
-│   │           ├── rule_registry.py    # Central rule catalog and language index
-│   │           ├── detection_engine.py # Workspace scanner, evaluator, and DB persistence
-│   │           └── rules/
-│   │               ├── python_rules.py     # 10 deterministic Python rules (PY-W001..W010)
-│   │               └── javascript_rules.py # 10 deterministic JS/TS rules (JS-W001..W010)
+│   │       ├── detection/              # Phase 4 Deterministic Bug Detection Engine
+│   │       │   ├── base_rule.py        # Abstract BaseRule interface
+│   │       │   ├── rule_context.py     # RuleContext encapsulation (AST, source, analysis)
+│   │       │   ├── rule_registry.py    # Central rule catalog and language index
+│   │       │   ├── detection_engine.py # Workspace scanner, evaluator, and DB persistence
+│   │       │   └── rules/
+│   │       │       ├── python_rules.py     # 10 deterministic Python rules (PY-W001..W010)
+│   │       │       └── javascript_rules.py # 10 deterministic JS/TS rules (JS-W001..W010)
+│   │       └── root_cause/             # Phase 5 AI Root Cause Analysis Engine
+│   │           ├── root_cause_context.py   # Context extraction, padding, secret redaction, 8k cap
+│   │           ├── root_cause_prompt_builder.py # Delimiter safety, anti-injection, schema prompt
+│   │           ├── root_cause_engine.py    # Gemini client, structured JSON parser, calibrated confidence
+│   │           └── root_cause_service.py   # Business logic, SQLite CRUD, dual severity comparison
 │   ├── data/                           # Local SQLite database & isolated workspaces (gitignored)
 │   │   ├── fixmate.db
 │   │   └── workspaces/{project_id}/...
-│   ├── tests/                          # 74 Pytest unit and integration tests
+│   ├── tests/                          # 81 Pytest unit and integration tests
 │   ├── requirements.txt                # tree-sitter, tree-sitter-javascript, tree-sitter-typescript
 │   └── .env.example
 ├── frontend/
@@ -103,9 +112,10 @@ FIXMATE AI/
 │   │   │   ├── dashboard/              # SystemStatus, GeminiTest, Metrics, Activity
 │   │   │   ├── workspace/              # FileExplorer, EditorTabs, CodeEditor, FileIcon
 │   │   │   ├── analysis/               # AnalysisPanel, AnalysisSummaryCard, StructuralViewer
-│   │   │   └── detection/              # DetectionPanel (Findings list, filters, Monaco jump)
+│   │   │   ├── detection/              # DetectionPanel (Findings list, filters, Monaco jump)
+│   │   │   └── root_cause/             # RootCauseAnalysisCard, RootCauseHistoryModal
 │   │   ├── pages/                      # DashboardPage, ProjectsPage, WorkspacePage, NewAnalysisPage
-│   │   ├── services/                   # apiClient.ts (Typed HTTP client for Phase 1-4)
+│   │   ├── services/                   # apiClient.ts (Typed HTTP client for Phase 1-5)
 │   │   ├── types/                      # TypeScript API interface definitions
 │   │   └── styles/                     # Modern Light Theme stylesheet
 │   ├── public/
@@ -116,7 +126,8 @@ FIXMATE AI/
 │   ├── PHASE_1_REPORT.md
 │   ├── PHASE_2_REPORT.md               # Phase 2 master verification report
 │   ├── PHASE_3_REPORT.md               # Phase 3 multi-language parsing report
-│   └── PHASE_4_REPORT.md               # Phase 4 deterministic bug detection report
+│   ├── PHASE_4_REPORT.md               # Phase 4 deterministic bug detection report
+│   └── PHASE_5_REPORT.md               # Phase 5 AI root cause analysis report
 └── README.md
 ```
 

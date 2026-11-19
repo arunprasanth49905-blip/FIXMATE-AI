@@ -12,10 +12,17 @@ import {
   Sparkles,
   ChevronDown,
   ChevronRight,
+  History,
+  Loader2,
+  MessageSquare,
+  AlertCircle,
 } from 'lucide-react';
-import { DetectionRunResponse, FindingSeverity } from '../../types/api';
+import { DetectionRunResponse, FindingSeverity, RootCauseAnalysis } from '../../types/api';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
+import { apiClient } from '../../services/apiClient';
+import { RootCauseAnalysisCard } from '../root_cause/RootCauseAnalysisCard';
+import { RootCauseHistoryModal } from '../root_cause/RootCauseHistoryModal';
 
 interface DetectionPanelProps {
   projectId: string;
@@ -27,6 +34,7 @@ interface DetectionPanelProps {
 }
 
 export const DetectionPanel: React.FC<DetectionPanelProps> = ({
+  projectId,
   detection,
   isDetecting,
   onRunDetection,
@@ -37,6 +45,14 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
+
+  // Root Cause State
+  const [analyzingFindingId, setAnalyzingFindingId] = useState<string | null>(null);
+  const [analysesMap, setAnalysesMap] = useState<Record<string, RootCauseAnalysis>>({});
+  const [showNotesFindingId, setShowNotesFindingId] = useState<string | null>(null);
+  const [userNotes, setUserNotes] = useState<Record<string, string>>({});
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   const findings = detection?.findings || [];
   const severityCounts = detection?.severity_counts || { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
@@ -78,6 +94,45 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
     }
   };
 
+  const handleAnalyzeFinding = async (findingId: string) => {
+    // If already analyzed, toggle expand to view
+    if (analysesMap[findingId]) {
+      setExpandedFindingId(findingId);
+      return;
+    }
+
+    try {
+      setAnalyzingFindingId(findingId);
+      setAnalysisError(null);
+      setExpandedFindingId(findingId);
+
+      const notes = userNotes[findingId] || undefined;
+      const res = await apiClient.analyzeFinding(projectId, {
+        finding_id: findingId,
+        include_surrounding_context: true,
+        custom_user_notes: notes,
+      });
+
+      setAnalysesMap((prev) => ({
+        ...prev,
+        [findingId]: res,
+      }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Root cause analysis failed';
+      setAnalysisError(msg);
+    } finally {
+      setAnalyzingFindingId(null);
+    }
+  };
+
+  const handleSelectFromHistory = (analysis: RootCauseAnalysis) => {
+    setAnalysesMap((prev) => ({
+      ...prev,
+      [analysis.finding_id]: analysis,
+    }));
+    setExpandedFindingId(analysis.finding_id);
+  };
+
   return (
     <div
       style={{
@@ -117,6 +172,16 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Button
+            variant="secondary"
+            onClick={() => setIsHistoryModalOpen(true)}
+            title="Browse Root Cause Analysis History"
+            style={{ padding: '4px 8px', fontSize: '12px' }}
+          >
+            <History size={12} />
+            <span>History</span>
+          </Button>
+
+          <Button
             variant="primary"
             onClick={onRunDetection}
             disabled={isDetecting}
@@ -141,6 +206,31 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
 
       {/* Main Content Area */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {analysisError && (
+          <div
+            style={{
+              padding: '10px 12px',
+              backgroundColor: 'var(--color-red-subtle)',
+              border: '1px solid var(--color-red-danger)',
+              borderRadius: '6px',
+              fontSize: '12px',
+              color: 'var(--color-red-danger)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <AlertCircle size={14} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{analysisError}</span>
+            <button
+              onClick={() => setAnalysisError(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {/* Empty State if No Detection Ran Yet */}
         {!detection && !isDetecting && (
           <div
@@ -256,15 +346,20 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
             ) : (
               filteredFindings.map((finding) => {
                 const isExpanded = expandedFindingId === finding.id;
+                const isAnalyzing = analyzingFindingId === finding.id;
+                const analysis = analysesMap[finding.id];
+                const showNotes = showNotesFindingId === finding.id;
+
                 return (
                   <div
                     key={finding.id}
                     style={{
-                      border: '1px solid var(--color-border)',
-                      borderRadius: '6px',
+                      border: analysis ? '1px solid #c7d2fe' : '1px solid var(--color-border)',
+                      borderRadius: '8px',
                       backgroundColor: 'var(--color-surface)',
                       overflow: 'hidden',
                       transition: 'border-color 0.15s ease',
+                      boxShadow: analysis ? '0 2px 8px rgba(99, 102, 241, 0.08)' : 'none',
                     }}
                   >
                     {/* Finding Summary Bar */}
@@ -296,6 +391,23 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                             <span style={{ fontSize: '11px', color: 'var(--color-navy-400)' }}>
                               ({Math.round(finding.confidence * 100)}% conf)
                             </span>
+                            {analysis && (
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  backgroundColor: '#e0e7ff',
+                                  color: '#3730a3',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                <Sparkles size={10} /> AI Analyzed ({analysis.confidence_assessment.confidence_score}%)
+                              </span>
+                            )}
                           </div>
 
                           <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--color-navy-900)', lineHeight: '1.4' }}>
@@ -311,24 +423,49 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                         </div>
                       </div>
 
-                      <Button
-                        variant="secondary"
-                        data-testid={`jump-btn-${finding.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onNavigateToSource(finding.file_path, finding.start_line, finding.start_column);
-                        }}
-                        title="Jump to code in editor"
-                        style={{ padding: '4px 8px', fontSize: '11px' }}
-                      >
-                        <span>Jump</span>
-                        <ArrowRight size={11} />
-                      </Button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {/* Root Cause Action Button */}
+                        <Button
+                          variant={analysis ? 'secondary' : 'primary'}
+                          data-testid={`analyze-btn-${finding.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAnalyzeFinding(finding.id);
+                          }}
+                          disabled={isAnalyzing}
+                          isLoading={isAnalyzing}
+                          title={analysis ? 'View AI Root Cause Analysis' : 'Investigate Root Cause with Google Gemini'}
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            backgroundColor: analysis ? '#eef2ff' : undefined,
+                            borderColor: analysis ? '#c7d2fe' : undefined,
+                            color: analysis ? '#4338ca' : undefined,
+                          }}
+                        >
+                          <Sparkles size={11} />
+                          <span>{isAnalyzing ? 'Investigating...' : analysis ? 'View RCA' : 'Analyze RCA'}</span>
+                        </Button>
+
+                        <Button
+                          variant="secondary"
+                          data-testid={`jump-btn-${finding.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNavigateToSource(finding.file_path, finding.start_line, finding.start_column);
+                          }}
+                          title="Jump to code in editor"
+                          style={{ padding: '4px 8px', fontSize: '11px' }}
+                        >
+                          <span>Jump</span>
+                          <ArrowRight size={11} />
+                        </Button>
+                      </div>
                     </div>
 
-                    {/* Expanded Finding Detail (Evidence & Remediation) */}
+                    {/* Expanded Finding Detail (Evidence, Remediation & RCA Card) */}
                     {isExpanded && (
-                      <div style={{ padding: '12px 14px', borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ padding: '12px 14px', borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {/* Explanation */}
                         <div>
                           <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-navy-600)', marginBottom: '3px' }}>
@@ -372,6 +509,85 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                             {finding.remediation}
                           </div>
                         </div>
+
+                        {/* Optional Developer Notes Bar (before AI analysis) */}
+                        {!analysis && (
+                          <div style={{ borderTop: '1px dashed var(--color-border)', paddingTop: '8px' }}>
+                            <button
+                              onClick={() => setShowNotesFindingId(showNotes ? null : finding.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                cursor: 'pointer',
+                                fontSize: '11px',
+                                color: 'var(--color-blue-primary)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: 500,
+                              }}
+                            >
+                              <MessageSquare size={11} />
+                              <span>{showNotes ? 'Hide developer observations' : 'Add developer observations for AI...'}</span>
+                            </button>
+
+                            {showNotes && (
+                              <div style={{ marginTop: '6px' }}>
+                                <textarea
+                                  placeholder="e.g. Occurs when user session expires, or during high concurrency load..."
+                                  value={userNotes[finding.id] || ''}
+                                  onChange={(e) =>
+                                    setUserNotes((prev) => ({
+                                      ...prev,
+                                      [finding.id]: e.target.value,
+                                    }))
+                                  }
+                                  className="form-input"
+                                  style={{ width: '100%', fontSize: '11.5px', height: '60px', padding: '6px' }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* AI Loading State */}
+                        {isAnalyzing && (
+                          <div
+                            style={{
+                              padding: '24px 16px',
+                              textAlign: 'center',
+                              backgroundColor: '#f8fafc',
+                              borderRadius: '8px',
+                              border: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <Loader2 size={24} className="animate-spin" style={{ color: '#4f46e5', margin: '0 auto 8px' }} />
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                              Investigating Root Cause with Gemini...
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                              Extracting local AST context, analyzing language semantics, and evaluating impact
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Render AI Root Cause Analysis Card */}
+                        {analysis && (
+                          <div style={{ marginTop: '4px' }}>
+                            <RootCauseAnalysisCard
+                              analysis={analysis}
+                              onClose={() =>
+                                setAnalysesMap((prev) => {
+                                  const copy = { ...prev };
+                                  delete copy[finding.id];
+                                  return copy;
+                                })
+                              }
+                              onNavigateToFile={(path, line) => onNavigateToSource(path, line, 1)}
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -381,6 +597,14 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* History Modal */}
+      <RootCauseHistoryModal
+        isOpen={isHistoryModalOpen}
+        projectId={projectId}
+        onClose={() => setIsHistoryModalOpen(false)}
+        onSelectAnalysis={handleSelectFromHistory}
+      />
     </div>
   );
 };

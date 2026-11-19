@@ -22,6 +22,9 @@ import {
   Finding,
   ProjectDetectionRequest,
   FileDetectionRequest,
+  RootCauseAnalysis,
+  AnalyzeFindingRequest,
+  RootCauseHistoryResponse,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -363,6 +366,37 @@ export const apiClient = {
     return request<Finding[]>(`/projects/${projectId}/detection/run-file`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+
+  // Phase 5 AI Root Cause Analysis APIs
+  analyzeFinding: (projectId: string, payload: AnalyzeFindingRequest): Promise<RootCauseAnalysis> => {
+    return request<RootCauseAnalysis>(`/projects/${projectId}/root-cause/analyze`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, 60000);
+  },
+
+  getLatestRootCause: (projectId: string): Promise<RootCauseAnalysis> => {
+    return request<RootCauseAnalysis>(`/projects/${projectId}/root-cause/latest`);
+  },
+
+  getRootCauseForFinding: (projectId: string, findingId: string): Promise<RootCauseAnalysis | null> => {
+    return request<RootCauseAnalysis | null>(`/projects/${projectId}/root-cause/finding/${findingId}`);
+  },
+
+  getRootCauseById: (projectId: string, analysisId: string): Promise<RootCauseAnalysis> => {
+    return request<RootCauseAnalysis>(`/projects/${projectId}/root-cause/${analysisId}`);
+  },
+
+  getRootCauseHistory: (projectId: string, limit?: number): Promise<RootCauseHistoryResponse> => {
+    const q = limit ? `?limit=${limit}` : '';
+    return request<RootCauseHistoryResponse>(`/projects/${projectId}/root-cause/history${q}`);
+  },
+
+  deleteRootCause: (projectId: string, analysisId: string): Promise<{ deleted: boolean; analysis_id: string }> => {
+    return request<{ deleted: boolean; analysis_id: string }>(`/projects/${projectId}/root-cause/${analysisId}`, {
+      method: 'DELETE',
     });
   },
 };
