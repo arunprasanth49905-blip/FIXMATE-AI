@@ -1,6 +1,8 @@
 import { RouteObject } from 'react-router-dom';
 import { DashboardPage } from '../pages/DashboardPage';
 import { NewAnalysisPage } from '../pages/NewAnalysisPage';
+import { ProjectsPage } from '../pages/ProjectsPage';
+import { WorkspacePage } from '../pages/WorkspacePage';
 import { ComingSoonPage } from '../pages/ComingSoonPage';
 import { StatusState } from '../components/common/StatusIndicator';
 
@@ -15,7 +17,11 @@ export const getRoutes = (onConnectionChange?: (state: StatusState) => void): Ro
   },
   {
     path: '/projects',
-    element: <ComingSoonPage moduleName="Projects" phase="Phase 2" />,
+    element: <ProjectsPage />,
+  },
+  {
+    path: '/projects/:projectId',
+    element: <WorkspacePage />,
   },
   {
     path: '/repairs',

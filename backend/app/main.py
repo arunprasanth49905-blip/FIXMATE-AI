@@ -1,10 +1,22 @@
-from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_v1_router
 from app.core.config import settings
 from app.core.logging import logger
+from app.db.session import Base, engine
+import app.models  # ensure all models are registered with Base
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize SQLite database schema
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database schema initialized successfully")
+    yield
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -13,6 +25,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 # Configure CORS specifically for frontend origins (no wildcard with credentials)
@@ -45,6 +58,14 @@ def root():
         "docs": "/docs",
         "health": f"{settings.API_V1_PREFIX}/health",
     }
+
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
 
 
 @app.exception_handler(Exception)

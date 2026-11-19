@@ -24,6 +24,9 @@ export const App: React.FC = () => {
   };
 
   const getPageTitle = (path: string) => {
+    if (path.startsWith('/projects/') && path !== '/projects') {
+      return 'Project Code Workspace';
+    }
     switch (path) {
       case '/':
         return 'Developer Dashboard';

@@ -31,6 +31,13 @@ __pycache__/
 htmlcov/
 coverage/
 
+# Database and workspace storage
+*.db
+*.sqlite
+*.sqlite3
+data/
+backend/data/
+
 # IDE / Editor files
 .vscode/
 .idea/

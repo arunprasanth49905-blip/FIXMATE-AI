@@ -21,8 +21,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={18} />, active: true },
+  { name: 'Projects', path: '/projects', icon: <FolderGit2 size={18} />, active: true },
   { name: 'New Analysis', path: '/analysis', icon: <PlusCircle size={18} />, active: true },
-  { name: 'Projects', path: '/projects', icon: <FolderGit2 size={18} />, active: false },
   { name: 'Code Repairs', path: '/repairs', icon: <Wrench size={18} />, active: false },
   { name: 'Test Results', path: '/test-results', icon: <CheckCircle size={18} />, active: false },
   { name: 'Analytics', path: '/analytics', icon: <BarChart3 size={18} />, active: false },

@@ -94,7 +94,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onConnectionChange
         />
       </div>
 
-      <ProjectOverviewCard />
+      <ProjectOverviewCard totalProjects={systemInfo?.total_projects ?? 0} />
 
       <RecentActivityCard />
     </div>

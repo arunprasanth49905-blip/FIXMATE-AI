@@ -37,10 +37,16 @@ export const NewAnalysisPage: React.FC = () => {
             Autonomous Code Analysis Engine
           </h2>
 
-          <p style={{ fontSize: '14px', color: 'var(--color-navy-600)', maxWidth: '580px', margin: '0 auto 24px', lineHeight: 1.6 }}>
-            The FIXMATE AI code ingestion, AST parsing, and vulnerability detection pipeline is scheduled for implementation in <strong>Phase 2</strong>.
-            In Phase 1, foundational architecture, security boundaries, and API integrations are being verified.
+          <p style={{ fontSize: '14px', color: 'var(--color-navy-600)', maxWidth: '580px', margin: '0 auto 20px', lineHeight: 1.6 }}>
+            The FIXMATE AI code workspace is now active in <strong>Phase 2</strong>. Create projects, upload source code, explore directory hierarchies, and inspect files in the code editor.
           </p>
+
+          <div style={{ marginBottom: '24px' }}>
+            <Link to="/projects" className="btn btn-primary">
+              <Code2 size={16} />
+              <span>Go to Projects Directory</span>
+            </Link>
+          </div>
 
           <div
             style={{

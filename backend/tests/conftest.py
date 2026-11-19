@@ -9,7 +9,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.main import app
 from app.core.config import settings
+from app.db.session import Base, engine
 from app.services.gemini_service import gemini_service
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_database():
+    """Ensure database schema is created for test session."""
+    Base.metadata.create_all(bind=engine)
+    yield
 
 
 @pytest.fixture(autouse=True)

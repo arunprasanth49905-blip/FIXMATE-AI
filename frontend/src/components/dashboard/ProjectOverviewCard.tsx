@@ -21,7 +21,11 @@ const MetricBox: React.FC<MetricBoxProps> = ({ icon, label, value, subtitle }) =
   );
 };
 
-export const ProjectOverviewCard: React.FC = () => {
+interface ProjectOverviewCardProps {
+  totalProjects?: number;
+}
+
+export const ProjectOverviewCard: React.FC<ProjectOverviewCardProps> = ({ totalProjects = 0 }) => {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', marginTop: '24px' }}>
@@ -29,7 +33,7 @@ export const ProjectOverviewCard: React.FC = () => {
           Analysis & Autonomous Repair Metrics
         </h3>
         <span style={{ fontSize: '12px', color: 'var(--color-navy-400)' }}>
-          Honest State • Phase 1
+          Live Telemetry • Phase 2
         </span>
       </div>
 
@@ -37,8 +41,8 @@ export const ProjectOverviewCard: React.FC = () => {
         <MetricBox
           icon={<FolderGit2 size={18} style={{ color: 'var(--color-blue-primary)' }} />}
           label="Projects Analyzed"
-          value="0"
-          subtitle="No projects ingested yet"
+          value={totalProjects}
+          subtitle={totalProjects > 0 ? `${totalProjects} active workspace project(s)` : "No projects ingested yet"}
         />
 
         <MetricBox
