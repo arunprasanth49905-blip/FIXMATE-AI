@@ -153,9 +153,33 @@ Executed `backend/scratch/verify_live_root_cause.py` against live Gemini endpoin
 
 ---
 
-## 6. Phase 6 Readiness
+## 7. Phase 5 Upgrade & Regression Repair: Gemini 3.5 Flash Lite Restoration
 
-With Phase 5 complete, FIXMATE AI is fully primed for **Phase 6: Autonomous Code Repair & Patch Engine**:
-- Findings are deterministically identified (Phase 4).
-- Root causes and conceptual remediation strategies are clearly understood (Phase 5).
-- Phase 6 will consume these structured root cause objects to safely synthesize, verify (AST diff), and preview code patches with developer approval.
+### 7.1 Objective & Regression Audit
+Following the initial Phase 5 release, the RCA experience was upgraded from dense technical reports to a concise, beginner-friendly format with exact line identification, original code display, plain English explanations, root cause determination, and suggested code corrections (non-applied).
+
+During this upgrade:
+1. **Model Inconsistency Identified**: Isolated references in UI fallbacks and tests defaulted to `gemini-2.5-flash`, while the system was standardizing on `gemini-3.5-flash-lite`.
+2. **Transient Google API 503 Spikes**: Google's `gemini-3.5-flash-lite` experienced intermittent high-demand 503 spikes. The health check and connection test lacked exponential backoff retry for transient 503/429 errors, leading to false-negative test failures.
+3. **Loopback Socket Access During TestClient**: In Windows sandboxed test execution, `starlette.testclient`'s internal `anyio` portal required local socket pair permissions.
+
+### 7.2 Restoration Actions
+- **Centralized Model Configuration**: Set `GEMINI_MODEL=gemini-3.5-flash-lite` centrally across `.env`, `backend/app/core/config.py`, `backend/app/services/root_cause/root_cause_engine.py`, `backend/app/services/gemini_service.py`, and frontend UI fallback cards (`GeminiTestCard.tsx`, `SystemStatusCard.tsx`).
+- **Zero Legacy Model References**: Verified 0 occurrences of `gemini-2.5-flash`, `gemini-2.5-flash-lite`, or `gemini-3.8-flash` in the codebase.
+- **Robust Transient Error Handling & Retries**: Added automated retry with exponential backoff for transient 503 (high demand) and 429 (rate limit) responses in both `GeminiService.test_connection()` and `RootCauseEngine.analyze()`.
+- **Exact Line & Code Suggestion Safety**: Retained strictly non-destructive behavior (`fix_status: "suggested_not_applied"`). Original source files remain untouched.
+- **Monaco Deep Link**: Added `View Error in Editor` action button that navigates directly to the exact file and error line in Monaco Editor.
+
+### 7.3 Final Verification Results
+1. **Gemini Model Check**: Runtime model confirmed as `gemini-3.5-flash-lite`.
+2. **Real Gemini Connection Test**: Real Google Gemini API ping verified (`PONG`, 200 OK).
+3. **Focused RCA Tests**: 8/8 tests passed in `backend/tests/test_root_cause.py`.
+4. **Full Backend Tests**: 82/82 tests passed in `backend/tests/`.
+5. **Frontend Vitest Tests**: 38/38 tests passed across 6 suites.
+6. **TypeScript & Production Build**: `npm run build --prefix frontend` built successfully in 6.70s (`dist/index.html` generated).
+7. **Live PY-W007 Division-by-Zero Test**:
+   - Location: `main.py`, Line 2, `PY-W007`
+   - Original Code: `return price * discount / 0`
+   - Simple Explanation: "The code attempts to divide a number by zero, which is mathematically invalid and crashes the program with a ZeroDivisionError."
+   - Suggested Correction: `return price * discount / 100` (Assumed discount is a percentage)
+   - Source file on disk verified completely unchanged.

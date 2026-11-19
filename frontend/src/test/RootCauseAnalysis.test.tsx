@@ -13,37 +13,49 @@ const mockAnalysis: RootCauseAnalysis = {
   project_id: 'proj-123',
   finding_id: 'f-1',
   detection_run_id: 'run-1',
-  rule_id: 'PY-E001',
-  rule_name: 'Undefined Variable Used',
+  rule_id: 'PY-W007',
+  rule_name: 'Division by Zero',
   language: 'Python',
-  file_path: 'src/billing.py',
-  start_line: 15,
-  end_line: 15,
-  model: 'gemini-2.5-flash',
+  file_path: 'src/pricing.py',
+  start_line: 2,
+  end_line: 2,
+  model: 'gemini-3.5-flash-lite',
   created_at: '2026-11-19T14:30:00Z',
   duration_ms: 185.5,
   status: 'success',
-  summary: 'Accumulator variable referenced prior to initialization in loop scope',
-  bug_explanation: "The variable 'total' is augmented inside the loop but was never declared in the enclosing scope.",
-  root_cause: 'Missing variable declaration before entering the accumulator loop.',
-  technical_reasoning: 'In Python, augmented assignment assigns to local scope. Because RHS is evaluated first, UnboundLocalError is raised.',
-  trigger_conditions: ['Invoking function with a non-empty items array', 'First loop iteration'],
-  execution_impact: 'Immediate runtime crash halts request processing.',
-  potential_consequences: ['Uncaught UnboundLocalError', 'Service 500 error', 'Transaction abort'],
+  bug_location: {
+    file: 'src/pricing.py',
+    line: 2,
+    rule_id: 'PY-W007',
+    language: 'Python',
+  },
+  original_code: 'return price * discount / 0',
+  simple_explanation: 'This code divides a number by zero, which causes Python to raise an exception and crash.',
+  root_cause: 'The divisor in the calculation is hardcoded as zero.',
+  corrected_code: 'return price * discount / 100',
+  correction_explanation: 'Changed the divisor to 100 assuming discount is a percentage.',
+  assumptions: ['The discount variable is intended to represent a percentage.'],
+  fix_status: 'suggested_not_applied',
+  summary: 'Division by zero in pricing formula',
+  bug_explanation: 'Dividing by zero is mathematically undefined.',
+  technical_reasoning: 'Python raises ZeroDivisionError on integer or float division by 0.',
+  trigger_conditions: ['Invoking discount calculation function'],
+  execution_impact: 'Immediate crash with ZeroDivisionError',
+  potential_consequences: ['Uncaught ZeroDivisionError', 'Service 500 error'],
   severity_assessment: {
-    detected_severity: 'critical',
-    ai_assessed_severity: 'critical',
-    severity_reasoning: 'Agreed: Function completely fails on runtime execution.',
+    detected_severity: 'high',
+    ai_assessed_severity: 'high',
+    severity_reasoning: 'Deterministic crash upon calling function.',
     severity_changed: false,
   },
-  recommended_approach: "Initialize 'total = 0' immediately above the 'for item in items:' loop construct.",
-  prevention: 'Configure static checkers (e.g. Ruff or Pyflakes) in pre-commit hooks.',
-  missing_context: ['Calling function signature in order_processor.py'],
+  recommended_approach: 'Change denominator to 100 for percentage calculation.',
+  prevention: 'Configure static analysis rule PY-W007.',
+  missing_context: [],
   confidence_assessment: {
-    confidence_score: 96.0,
+    confidence_score: 98.0,
     confidence_level: 'HIGH',
-    confidence_reason: 'Local function scope has full visibility without external dynamic variables.',
-    limitations: ['Static AST does not verify caller arguments.'],
+    confidence_reason: 'Literal zero in division operator leaves no ambiguity.',
+    limitations: [],
   },
 };
 
@@ -54,11 +66,11 @@ const mockDetectionRun: DetectionRunResponse = {
   engine_version: '1.0.0',
   created_at: '2026-11-19T14:00:00Z',
   duration_ms: 32.1,
-  files_scanned: 2,
+  files_scanned: 1,
   total_findings: 1,
   severity_counts: {
-    critical: 1,
-    high: 0,
+    critical: 0,
+    high: 1,
     medium: 0,
     low: 0,
     info: 0,
@@ -72,75 +84,102 @@ const mockDetectionRun: DetectionRunResponse = {
       id: 'f-1',
       run_id: 'run-1',
       project_id: 'proj-123',
-      rule_id: 'PY-E001',
-      rule_name: 'Undefined Variable Used',
+      rule_id: 'PY-W007',
+      rule_name: 'Division by Zero',
       language: 'Python',
-      severity: 'critical',
-      confidence: 0.95,
+      severity: 'high',
+      confidence: 0.98,
       category: 'correctness',
-      file_path: 'src/billing.py',
-      start_line: 15,
-      start_column: 8,
-      end_line: 15,
-      end_column: 13,
-      message: "Local variable 'total' referenced before assignment",
-      explanation: 'Augmented assignment requires variable to exist beforehand.',
-      evidence: "total += item['amount']",
-      remediation: 'Initialize total = 0 before the loop.',
+      file_path: 'src/pricing.py',
+      start_line: 2,
+      start_column: 12,
+      end_line: 2,
+      end_column: 32,
+      message: 'Division by literal zero',
+      explanation: 'Dividing by zero raises ZeroDivisionError.',
+      evidence: 'return price * discount / 0',
+      remediation: 'Change divisor to non-zero.',
     },
   ],
 };
 
-describe('Phase 5: AI Root Cause Analysis Frontend', () => {
+describe('Phase 5: Upgraded AI RCA Intelligence & Code Correction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockImplementation(() => Promise.resolve()),
+      },
+    });
   });
 
-  it('renders RootCauseAnalysisCard with all rich technical sections', () => {
+  it('renders concise RCA card with exact error location, simple explanation, and corrected code', () => {
+    const onNavigate = vi.fn();
+    render(<RootCauseAnalysisCard analysis={mockAnalysis} onNavigateToFile={onNavigate} />);
+
+    // 1. Bug Location & Navigation
+    expect(screen.getByText('Division by Zero')).toBeDefined();
+    expect(screen.getByText('src/pricing.py')).toBeDefined();
+    expect(screen.getByText('2')).toBeDefined();
+    expect(screen.getByText('View Error in Editor')).toBeDefined();
+
+    // 2. Original Buggy Code (Red/Error context)
+    expect(screen.getByText('Error Code (Line 2)')).toBeDefined();
+    expect(screen.getByText('return price * discount / 0')).toBeDefined();
+
+    // 3. What Went Wrong? (Simple English)
+    expect(screen.getByText('What Went Wrong?')).toBeDefined();
+    expect(
+      screen.getByText('This code divides a number by zero, which causes Python to raise an exception and crash.')
+    ).toBeDefined();
+
+    // 4. Root Cause
+    expect(screen.getByText('Root Cause')).toBeDefined();
+    expect(screen.getByText('The divisor in the calculation is hardcoded as zero.')).toBeDefined();
+
+    // 5. Corrected Code (Green/Success context)
+    expect(screen.getByText('Corrected Code')).toBeDefined();
+    expect(screen.getByText('return price * discount / 100')).toBeDefined();
+    expect(screen.getByText('Suggested Fix (Not Applied)')).toBeDefined();
+
+    // 6. What Changed?
+    expect(screen.getByText('What Changed?')).toBeDefined();
+    expect(screen.getByText('Changed the divisor to 100 assuming discount is a percentage.')).toBeDefined();
+
+    // 7. AI Assumptions
+    expect(screen.getByText('AI Assumptions & Inferences')).toBeDefined();
+    expect(screen.getByText('The discount variable is intended to represent a percentage.')).toBeDefined();
+
+    // 8. Severity & Confidence metrics
+    expect(screen.getByText('high')).toBeDefined();
+    expect(screen.getByText('98% (HIGH)')).toBeDefined();
+  });
+
+  it('handles "View Error in Editor" click to jump to exact file and line', () => {
+    const onNavigate = vi.fn();
+    render(<RootCauseAnalysisCard analysis={mockAnalysis} onNavigateToFile={onNavigate} />);
+
+    const jumpBtn = screen.getByTestId('view-in-editor-btn');
+    fireEvent.click(jumpBtn);
+
+    expect(onNavigate).toHaveBeenCalledWith('src/pricing.py', 2);
+  });
+
+  it('handles Copy buttons for original code and corrected code', async () => {
     render(<RootCauseAnalysisCard analysis={mockAnalysis} />);
 
-    // Header & Summary
-    expect(screen.getByText('Undefined Variable Used')).toBeDefined();
-    expect(screen.getByText(/src\/billing.py:15/)).toBeDefined();
-    expect(screen.getByText(mockAnalysis.summary)).toBeDefined();
+    // Copy original code
+    const copyOriginalBtn = screen.getByTestId('copy-original-btn');
+    fireEvent.click(copyOriginalBtn);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('return price * discount / 0');
 
-    // Dual Severity Evaluation
-    expect(screen.getByText('Severity Evaluation')).toBeDefined();
-    expect(screen.getByText('Aligned')).toBeDefined();
-    expect(screen.getByText(/"Agreed: Function completely fails on runtime execution."/)).toBeDefined();
-
-    // Calibrated Confidence Breakdown
-    expect(screen.getByText('HIGH (96%)')).toBeDefined();
-    expect(screen.getByText(mockAnalysis.confidence_assessment.confidence_reason)).toBeDefined();
-
-    // Technical Investigation Breakdown
-    expect(screen.getByText(/The variable 'total' is augmented inside the loop/)).toBeDefined();
-    expect(screen.getByText(mockAnalysis.root_cause)).toBeDefined();
-    expect(screen.getByText(mockAnalysis.execution_impact)).toBeDefined();
-    expect(screen.getByText('Uncaught UnboundLocalError')).toBeDefined();
-
-    // Actionable Guidance (No Code Patches)
-    expect(screen.getByText(mockAnalysis.recommended_approach)).toBeDefined();
-    expect(screen.getByText(mockAnalysis.prevention)).toBeDefined();
+    // Copy corrected code
+    const copyCorrectedBtn = screen.getByTestId('copy-corrected-btn');
+    fireEvent.click(copyCorrectedBtn);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('return price * discount / 100');
   });
 
-  it('renders divergent severity badge when AI disagrees with static severity', () => {
-    const divergentAnalysis: RootCauseAnalysis = {
-      ...mockAnalysis,
-      severity_assessment: {
-        detected_severity: 'medium',
-        ai_assessed_severity: 'critical',
-        severity_reasoning: 'Critical because it can be reached without authentication.',
-        severity_changed: true,
-      },
-    };
-
-    render(<RootCauseAnalysisCard analysis={divergentAnalysis} />);
-    expect(screen.getByText('AI Assesses Differently')).toBeDefined();
-    expect(screen.getByText('critical')).toBeDefined();
-  });
-
-  it('triggers AI root cause analysis from DetectionPanel and displays the card', async () => {
+  it('triggers AI root cause analysis from DetectionPanel and displays the upgraded card', async () => {
     vi.mocked(apiClient.analyzeFinding).mockResolvedValueOnce(mockAnalysis);
 
     render(
@@ -155,13 +194,12 @@ describe('Phase 5: AI Root Cause Analysis Frontend', () => {
     );
 
     // Initial finding row
-    expect(screen.getByText("Local variable 'total' referenced before assignment")).toBeDefined();
+    expect(screen.getByText('Division by literal zero')).toBeDefined();
 
     // Click Analyze RCA button
     const analyzeBtn = screen.getByTestId('analyze-btn-f-1');
     fireEvent.click(analyzeBtn);
 
-    // Verify API called with finding ID
     expect(apiClient.analyzeFinding).toHaveBeenCalledWith('proj-123', {
       finding_id: 'f-1',
       include_surrounding_context: true,
@@ -170,8 +208,9 @@ describe('Phase 5: AI Root Cause Analysis Frontend', () => {
 
     // Wait for analysis card to render
     await waitFor(() => {
-      expect(screen.getByText(mockAnalysis.summary)).toBeDefined();
-      expect(screen.getByText('HIGH (96%)')).toBeDefined();
+      expect(screen.getByText('What Went Wrong?')).toBeDefined();
+      expect(screen.getByText('return price * discount / 100')).toBeDefined();
+      expect(screen.getByText('98% (HIGH)')).toBeDefined();
     });
   });
 
@@ -184,14 +223,17 @@ describe('Phase 5: AI Root Cause Analysis Frontend', () => {
           id: 'rca-101',
           project_id: 'proj-123',
           finding_id: 'f-1',
-          rule_id: 'PY-E001',
-          rule_name: 'Undefined Variable Used',
-          file_path: 'src/billing.py',
-          start_line: 15,
-          summary: 'Accumulator variable referenced prior to initialization in loop scope',
-          detected_severity: 'critical',
-          ai_assessed_severity: 'critical',
-          confidence_score: 96.0,
+          rule_id: 'PY-W007',
+          rule_name: 'Division by Zero',
+          file_path: 'src/pricing.py',
+          start_line: 2,
+          summary: 'Division by zero in pricing formula',
+          original_code: 'return price * discount / 0',
+          corrected_code: 'return price * discount / 100',
+          fix_status: 'suggested_not_applied',
+          detected_severity: 'high',
+          ai_assessed_severity: 'high',
+          confidence_score: 98.0,
           confidence_level: 'HIGH',
           created_at: '2026-11-19T14:30:00Z',
           duration_ms: 185.5,
@@ -213,14 +255,13 @@ describe('Phase 5: AI Root Cause Analysis Frontend', () => {
       />
     );
 
-    // Check history items load
     await waitFor(() => {
-      expect(screen.getByText('Undefined Variable Used')).toBeDefined();
-      expect(screen.getByText(/src\/billing.py:15/)).toBeDefined();
+      expect(screen.getByText('Division by Zero')).toBeDefined();
+      expect(screen.getByText(/src\/pricing.py:2/)).toBeDefined();
     });
 
     // Click item to restore
-    fireEvent.click(screen.getByText('Undefined Variable Used'));
+    fireEvent.click(screen.getByText('Division by Zero'));
 
     await waitFor(() => {
       expect(apiClient.getRootCauseById).toHaveBeenCalledWith('proj-123', 'rca-101');

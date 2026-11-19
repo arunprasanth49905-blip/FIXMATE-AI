@@ -46,6 +46,14 @@ class RootCauseAnalysis(Base):
     duration_ms = Column(Float, nullable=False, default=0.0)
     status = Column(String(32), nullable=False, default="success")  # success, failed
 
+    # Upgrade: Exact Code & Simple Developer Explanation
+    original_code = Column(Text, nullable=False, default="")
+    simple_explanation = Column(Text, nullable=False, default="")
+    corrected_code = Column(Text, nullable=False, default="")
+    correction_explanation = Column(Text, nullable=False, default="")
+    assumptions_json = Column(Text, nullable=False, default="[]")
+    fix_status = Column(String(32), nullable=False, default="suggested_not_applied")  # suggested_not_applied, needs_clarification
+
     # Core Investigation
     summary = Column(Text, nullable=False, default="")
     bug_explanation = Column(Text, nullable=False, default="")
@@ -61,7 +69,7 @@ class RootCauseAnalysis(Base):
     severity_reasoning = Column(Text, nullable=False, default="")
     severity_changed = Column(Boolean, nullable=False, default=False)
 
-    # Actionable guidance (Strictly no code patches)
+    # Actionable guidance
     recommended_approach = Column(Text, nullable=False, default="")
     prevention = Column(Text, nullable=False, default="")
     missing_context_json = Column(Text, nullable=False, default="[]")

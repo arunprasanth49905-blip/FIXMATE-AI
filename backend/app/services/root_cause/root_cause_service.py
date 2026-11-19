@@ -10,6 +10,7 @@ from app.models.detection import DetectionFinding
 from app.models.root_cause import RootCauseAnalysis
 from app.schemas.root_cause import (
     AnalyzeFindingRequest,
+    BugLocation,
     RootCauseAnalysisResponse,
     RootCauseHistoryItem,
     RootCauseHistoryResponse,
@@ -30,6 +31,7 @@ class RootCauseService:
         potential_consequences = []
         missing_context = []
         limitations = []
+        assumptions = []
 
         try:
             trigger_conditions = json.loads(record.trigger_conditions_json or "[]")
@@ -51,6 +53,18 @@ class RootCauseService:
         except Exception:
             pass
 
+        try:
+            assumptions = json.loads(getattr(record, "assumptions_json", "[]") or "[]")
+        except Exception:
+            pass
+
+        bug_location = BugLocation(
+            file=record.file_path,
+            line=record.start_line,
+            rule_id=record.rule_id,
+            language=record.language,
+        )
+
         return RootCauseAnalysisResponse(
             id=record.id,
             project_id=record.project_id,
@@ -66,6 +80,15 @@ class RootCauseService:
             created_at=record.created_at,
             duration_ms=record.duration_ms,
             status=record.status,
+            # Upgraded fields
+            bug_location=bug_location,
+            original_code=getattr(record, "original_code", "") or "",
+            simple_explanation=getattr(record, "simple_explanation", "") or record.bug_explanation or record.summary,
+            corrected_code=getattr(record, "corrected_code", "") or "",
+            correction_explanation=getattr(record, "correction_explanation", "") or record.recommended_approach or "",
+            assumptions=assumptions,
+            fix_status=getattr(record, "fix_status", "suggested_not_applied") or "suggested_not_applied",
+            # Backward-compatible fields
             summary=record.summary,
             bug_explanation=record.bug_explanation,
             root_cause=record.root_cause,
@@ -119,7 +142,14 @@ class RootCauseService:
                 detail=f"Detection finding with ID '{request.finding_id}' not found in project '{project_id}'.",
             )
 
-        # 3. Extract source context with surrounding lines
+        # 3. Extract exact error line and surrounding context
+        exact_buggy_code = RootCauseContextBuilder.extract_exact_error_line(
+            project_id=project_id,
+            file_path=finding.file_path,
+            start_line=finding.start_line,
+            end_line=finding.end_line,
+        )
+
         context_snippet = ""
         if request.include_surrounding_context:
             context_snippet = RootCauseContextBuilder.build_finding_context(
@@ -133,11 +163,21 @@ class RootCauseService:
         payload, duration_ms, raw_text = self.engine.analyze(
             finding=finding,
             context_snippet=context_snippet,
+            exact_buggy_code=exact_buggy_code,
             custom_user_notes=request.custom_user_notes,
         )
 
         # 5. Persist analysis in SQLite
-        severity_changed = payload.ai_assessed_severity.lower() != finding.severity.lower()
+        severity_changed = payload.severity.lower() != finding.severity.lower()
+        score = payload.confidence
+        if score >= 85.0:
+            conf_level = "HIGH"
+        elif score >= 60.0:
+            conf_level = "MEDIUM"
+        else:
+            conf_level = "LOW"
+
+        final_original_code = payload.original_code if payload.original_code.strip() else exact_buggy_code
 
         analysis_record = RootCauseAnalysis(
             project_id=project_id,
@@ -152,24 +192,32 @@ class RootCauseService:
             model=self.engine.model,
             duration_ms=duration_ms,
             status="success",
-            summary=payload.summary,
-            bug_explanation=payload.bug_explanation,
+            # Upgrade fields
+            original_code=final_original_code,
+            simple_explanation=payload.simple_explanation,
+            corrected_code=payload.corrected_code,
+            correction_explanation=payload.correction_explanation,
+            assumptions_json=json.dumps(payload.assumptions),
+            fix_status=payload.fix_status,
+            # Core & backward-compatible fields
+            summary=payload.bug_summary,
+            bug_explanation=payload.simple_explanation,
             root_cause=payload.root_cause,
-            technical_reasoning=payload.technical_reasoning,
-            trigger_conditions_json=json.dumps(payload.trigger_conditions),
-            execution_impact=payload.execution_impact,
-            potential_consequences_json=json.dumps(payload.potential_consequences),
+            technical_reasoning=f"{payload.root_cause}. {payload.correction_explanation}",
+            trigger_conditions_json=json.dumps([f"Execution reaches line {finding.start_line}"]),
+            execution_impact=payload.simple_explanation,
+            potential_consequences_json=json.dumps(["Runtime exception / abnormal termination"]),
             detected_severity=finding.severity,
-            ai_assessed_severity=payload.ai_assessed_severity,
-            severity_reasoning=payload.severity_reasoning,
+            ai_assessed_severity=payload.severity,
+            severity_reasoning=payload.severity_reasoning or f"AI evaluated severity as {payload.severity}",
             severity_changed=severity_changed,
-            recommended_approach=payload.recommended_approach,
-            prevention=payload.prevention,
-            missing_context_json=json.dumps(payload.missing_context),
-            confidence_score=payload.confidence_score,
-            confidence_level=payload.confidence_level,
-            confidence_reason=payload.confidence_reason,
-            limitations_json=json.dumps(payload.limitations),
+            recommended_approach=payload.correction_explanation,
+            prevention="Follow language idioms and apply static verification rules.",
+            missing_context_json=json.dumps([]),
+            confidence_score=score,
+            confidence_level=conf_level,
+            confidence_reason=payload.confidence_reason or "Automated semantic evaluation of code AST",
+            limitations_json=json.dumps([]),
             raw_response=raw_text,
             error_message=None,
         )
@@ -262,6 +310,9 @@ class RootCauseService:
                 file_path=r.file_path,
                 start_line=r.start_line,
                 summary=r.summary,
+                original_code=getattr(r, "original_code", "") or "",
+                corrected_code=getattr(r, "corrected_code", "") or "",
+                fix_status=getattr(r, "fix_status", "suggested_not_applied") or "suggested_not_applied",
                 detected_severity=r.detected_severity,
                 ai_assessed_severity=r.ai_assessed_severity,
                 confidence_score=r.confidence_score,

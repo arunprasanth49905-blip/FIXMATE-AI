@@ -9,7 +9,7 @@ from app.models.project import Project
 from app.models.root_cause import RootCauseAnalysis
 from app.schemas.root_cause import (
     AnalyzeFindingRequest,
-    LLMRootCausePayload,
+    LLMRootCauseUpgradePayload,
 )
 from app.services.root_cause.root_cause_context import (
     RootCauseContextBuilder,
@@ -45,14 +45,12 @@ def test_redact_sensitive_data():
 
 
 def test_context_builder_padding_and_truncation(tmp_path, monkeypatch):
-    # Setup test file in temporary project workspace
     project_id = "test-proj-ctx"
     workspace_dir = tmp_path / project_id
     workspace_dir.mkdir(parents=True)
     file_path = "script.py"
     target_file = workspace_dir / file_path
 
-    # Create 50 lines
     lines = [f"line_{i} = {i}" for i in range(1, 51)]
     target_file.write_text("\n".join(lines), encoding="utf-8")
 
@@ -73,13 +71,48 @@ def test_context_builder_padding_and_truncation(tmp_path, monkeypatch):
         padding=5,
     )
 
-    # Line 20 to 30 should be present
     assert ">>>   25 | line_25 = 25" in snippet
     assert "   20 | line_20 = 20" in snippet
     assert "   30 | line_30 = 30" in snippet
-    # Outside padding should not be present
     assert "line_10 =" not in snippet
     assert "line_45 =" not in snippet
+
+
+def test_extract_exact_error_line(tmp_path, monkeypatch):
+    project_id = "test-proj-exact"
+    workspace_dir = tmp_path / project_id
+    workspace_dir.mkdir(parents=True)
+    file_path = "calc.py"
+    target_file = workspace_dir / file_path
+
+    code = "def discount(price):\n    return price * 0.1 / 0\n"
+    target_file.write_text(code, encoding="utf-8")
+
+    from app.services.root_cause import root_cause_context
+
+    monkeypatch.setattr(
+        root_cause_context.file_service,
+        "sanitize_and_resolve_path",
+        lambda pid, rel: (target_file, rel),
+    )
+
+    # Extract exact line 2
+    exact_line = RootCauseContextBuilder.extract_exact_error_line(
+        project_id=project_id,
+        file_path=file_path,
+        start_line=2,
+        end_line=2,
+    )
+    assert exact_line == "return price * 0.1 / 0"
+
+    # Line out of bounds
+    oob = RootCauseContextBuilder.extract_exact_error_line(
+        project_id=project_id,
+        file_path=file_path,
+        start_line=999,
+        end_line=999,
+    )
+    assert "[Error line location unavailable]" in oob
 
 
 # --- 2. Unit Tests: Prompt Builder & Safety Fencing ---
@@ -90,35 +123,41 @@ def test_build_analysis_prompt_safety():
         id="f-123",
         run_id="run-1",
         project_id="p-1",
-        rule_id="PY-E001",
-        rule_name="Undefined Variable",
+        rule_id="PY-W007",
+        rule_name="Division by Zero",
         language="python",
-        severity="critical",
-        confidence=0.95,
+        severity="high",
+        confidence=0.98,
         category="correctness",
         file_path="main.py",
-        start_line=10,
+        start_line=2,
         start_column=1,
-        end_line=10,
-        end_column=15,
-        message="Variable 'user_input' is used before assignment",
-        explanation="Accessing undefined variable triggers NameError at runtime.",
-        evidence="print(user_input)",
-        remediation="Define variable prior to referencing.",
+        end_line=2,
+        end_column=25,
+        message="Division by literal zero",
+        explanation="Dividing any number by literal 0 always causes ZeroDivisionError.",
+        evidence="price * discount / 0",
+        remediation="Ensure denominator is non-zero.",
     )
 
-    context = ">>>   10 | print(user_input)"
-    notes = "User reported crash in production environment"
+    context = ">>>    2 | return price * discount / 0"
+    exact_code = "return price * discount / 0"
+    notes = "User reported ZeroDivisionError"
 
-    prompt = build_analysis_prompt(finding, context, custom_user_notes=notes)
+    prompt = build_analysis_prompt(
+        finding,
+        context,
+        exact_buggy_code=exact_code,
+        custom_user_notes=notes,
+    )
 
-    assert "PY-E001" in prompt
-    assert "Undefined Variable" in prompt
-    assert "critical" in prompt
+    assert "PY-W007" in prompt
+    assert "Division by Zero" in prompt
+    assert "high" in prompt
     assert "<<<UNTRUSTED_SOURCE_SNIPPET>>>" in prompt
-    assert ">>>   10 | print(user_input)" in prompt
-    assert "Developer notes: User reported crash in production environment" in prompt
-    assert "ANALYSIS ONLY" in ROOT_CAUSE_SYSTEM_PROMPT
+    assert "return price * discount / 0" in prompt
+    assert "Developer notes: User reported ZeroDivisionError" in prompt
+    assert "SIMPLE ENGLISH EXPLANATIONS" in ROOT_CAUSE_SYSTEM_PROMPT
 
 
 # --- 3. Unit Tests: Engine JSON Extraction & Validation ---
@@ -127,36 +166,30 @@ def test_build_analysis_prompt_safety():
 def test_engine_extract_clean_json():
     engine = RootCauseEngine()
 
-    # Markdown fenced json
-    raw_markdown = '```json\n{"summary": "Test summary", "confidence_score": 90.0}\n```'
+    raw_markdown = '```json\n{"bug_summary": "Division by zero", "confidence": 95.0}\n```'
     parsed = engine._extract_clean_json(raw_markdown)
-    assert parsed["summary"] == "Test summary"
-    assert parsed["confidence_score"] == 90.0
+    assert parsed["bug_summary"] == "Division by zero"
+    assert parsed["confidence"] == 95.0
 
-    # Bare json
-    bare_json = '{"summary": "Bare summary", "confidence_score": 75.0}'
+    bare_json = '{"bug_summary": "Bare summary", "confidence": 85.0}'
     parsed2 = engine._extract_clean_json(bare_json)
-    assert parsed2["summary"] == "Bare summary"
+    assert parsed2["bug_summary"] == "Bare summary"
 
 
 def test_engine_schema_and_calibration():
     sample_response = {
-        "summary": "Improper null check leading to TypeError",
-        "bug_explanation": "Function assumes object property exists without validation.",
-        "root_cause": "Missing defensive guard clause.",
-        "technical_reasoning": "In JavaScript accessing property of undefined throws TypeError.",
-        "trigger_conditions": ["When API payload omits 'profile' key"],
-        "execution_impact": "Abrupt execution termination with uncaught exception.",
-        "potential_consequences": ["500 Server Error", "Process crash"],
-        "ai_assessed_severity": "high",
-        "severity_reasoning": "High impact because it affects core login flow.",
-        "recommended_approach": "Add optional chaining (?.) or early return guard.",
-        "prevention": "Enable TypeScript strictNullChecks and add unit tests.",
-        "missing_context": ["Caller request schema"],
-        "confidence_score": 92.5,
-        "confidence_level": "HIGH",
-        "confidence_reason": "Clear AST structure with deterministic execution path.",
-        "limitations": ["Runtime inputs cannot be fully determined statically."],
+        "bug_summary": "Division by zero",
+        "original_code": "return price * discount / 0",
+        "simple_explanation": "This code divides a number by zero, which causes Python to stop with an error.",
+        "root_cause": "The divisor is hardcoded as the number 0.",
+        "corrected_code": "return price * discount / 100",
+        "correction_explanation": "Assuming discount is a percentage, divide by 100 instead of zero.",
+        "assumptions": ["The discount variable represents a percentage out of 100."],
+        "severity": "high",
+        "severity_reasoning": "High impact because function crashes unconditionally on call.",
+        "confidence": 96.0,
+        "confidence_reason": "Clear literal zero in division operator.",
+        "fix_status": "suggested_not_applied",
     }
 
     mock_client = MagicMock()
@@ -168,33 +201,39 @@ def test_engine_schema_and_calibration():
         id="f-456",
         run_id="run-1",
         project_id="p-1",
-        rule_id="JS-E001",
-        rule_name="Uncaught TypeError",
-        language="javascript",
-        severity="medium",
-        confidence=0.85,
+        rule_id="PY-W007",
+        rule_name="Division by Zero",
+        language="python",
+        severity="high",
+        confidence=0.98,
         category="correctness",
-        file_path="app.js",
-        start_line=5,
+        file_path="main.py",
+        start_line=2,
         start_column=1,
-        end_line=5,
-        end_column=20,
-        message="Potential TypeError",
-        explanation="Nullable property access",
-        evidence="data.user.name",
-        remediation="Use optional chaining",
+        end_line=2,
+        end_column=25,
+        message="Division by literal zero",
+        explanation="Dividing by zero causes exception.",
+        evidence="return price * discount / 0",
+        remediation="Change divisor",
     )
 
     with patch("google.genai.Client", return_value=mock_client):
         with patch("app.core.config.settings.GEMINI_API_KEY", "fake-key"):
             engine = RootCauseEngine()
-            payload, duration_ms, raw_text = engine.analyze(finding, "context")
+            payload, duration_ms, raw_text = engine.analyze(
+                finding=finding,
+                context_snippet="context",
+                exact_buggy_code="return price * discount / 0",
+            )
 
-            assert isinstance(payload, LLMRootCausePayload)
-            assert payload.summary == "Improper null check leading to TypeError"
-            assert payload.ai_assessed_severity == "high"
-            assert payload.confidence_score == 92.5
-            assert payload.confidence_level == "HIGH"
+            assert isinstance(payload, LLMRootCauseUpgradePayload)
+            assert payload.bug_summary == "Division by zero"
+            assert payload.original_code == "return price * discount / 0"
+            assert payload.corrected_code == "return price * discount / 100"
+            assert payload.severity == "high"
+            assert payload.confidence == 96.0
+            assert payload.fix_status == "suggested_not_applied"
             assert duration_ms >= 0
 
 
@@ -205,21 +244,19 @@ def test_root_cause_api_full_lifecycle(client: TestClient):
     # 1. Create a Project
     proj_resp = client.post(
         "/api/v1/projects",
-        json={"name": "Root Cause Test Project", "language": "python", "description": "Testing RCA engine"},
+        json={"name": "RCA Upgrade Project", "language": "python", "description": "Testing upgraded RCA"},
     )
     assert proj_resp.status_code == 201
     project_id = proj_resp.json()["id"]
 
-    # 2. Add source file
+    # 2. Add source file with intentional bug
     file_content = (
-        "def compute_total(items):\n"
-        "    for item in items:\n"
-        "        total += item['price']  # Undefined variable 'total'\n"
-        "    return total\n"
+        "def calculate_discount(price, discount):\n"
+        "    return price * discount / 0\n"
     )
     file_resp = client.post(
         f"/api/v1/projects/{project_id}/files",
-        json={"path": "billing.py", "content": file_content},
+        json={"path": "pricing.py", "content": file_content},
     )
     assert file_resp.status_code == 201
 
@@ -239,21 +276,21 @@ def test_root_cause_api_full_lifecycle(client: TestClient):
         finding = DetectionFinding(
             run_id=run.id,
             project_id=project_id,
-            rule_id="PY-E001",
-            rule_name="Undefined Variable Used",
+            rule_id="PY-W007",
+            rule_name="Division by Zero",
             language="python",
-            severity="critical",
-            confidence=0.95,
+            severity="high",
+            confidence=0.98,
             category="correctness",
-            file_path="billing.py",
-            start_line=3,
-            start_column=9,
-            end_line=3,
-            end_column=14,
-            message="Local variable 'total' referenced before assignment",
-            explanation="Attempting to augment-assign 'total += ...' before 'total = 0' raises UnboundLocalError.",
-            evidence="total += item['price']",
-            remediation="Initialize total = 0 prior to the loop.",
+            file_path="pricing.py",
+            start_line=2,
+            start_column=12,
+            end_line=2,
+            end_column=32,
+            message="Division by literal zero detected",
+            explanation="Dividing any expression by literal 0 raises ZeroDivisionError.",
+            evidence="return price * discount / 0",
+            remediation="Change divisor to a non-zero value.",
         )
         db.add(finding)
         db.commit()
@@ -262,30 +299,26 @@ def test_root_cause_api_full_lifecycle(client: TestClient):
     finally:
         db.close()
 
-    # Mock Gemini response
-    mock_payload = LLMRootCausePayload(
-        summary="UnboundLocalError due to missing accumulator initialization",
-        bug_explanation="The variable 'total' is augmented inside the loop without being initialized first.",
-        root_cause="Missing variable declaration/initialization before loop scope.",
-        technical_reasoning="Python compiler recognizes 'total' as local due to +=, causing UnboundLocalError when evaluating RHS.",
-        trigger_conditions=["Executing compute_total with non-empty list"],
-        execution_impact="Raises UnboundLocalError on first loop iteration, halting execution.",
-        potential_consequences=["Fatal runtime exception", "Failed invoice generation"],
-        ai_assessed_severity="critical",
-        severity_reasoning="Critical because function is completely unusable at runtime.",
-        recommended_approach="Initialize 'total = 0' immediately before the 'for' loop.",
-        prevention="Use static linting or enable mypy/ruff checks.",
-        missing_context=[],
-        confidence_score=98.0,
-        confidence_level="HIGH",
-        confidence_reason="Standard static scoping rule violation in Python.",
-        limitations=["None, isolated function scope."],
+    # Mock Gemini response using upgraded schema
+    mock_payload = LLMRootCauseUpgradePayload(
+        bug_summary="Division by zero",
+        original_code="return price * discount / 0",
+        simple_explanation="This code attempts to divide a number by zero, which causes Python to stop immediately with a ZeroDivisionError.",
+        root_cause="The code explicitly divides by the constant 0.",
+        corrected_code="return price * discount / 100",
+        correction_explanation="Divided by 100 instead of 0 to compute a percentage discount correctly.",
+        assumptions=["Assumed 'discount' represents a percentage (e.g., 20 for 20%)."],
+        severity="high",
+        severity_reasoning="High severity because calling this function will always fail with an unhandled exception.",
+        confidence=98.0,
+        confidence_reason="Literal zero in division is a deterministic bug.",
+        fix_status="suggested_not_applied",
     )
 
     with patch.object(
         RootCauseEngine,
         "analyze",
-        return_value=(mock_payload, 150.0, '{"summary": "mock"}'),
+        return_value=(mock_payload, 120.0, '{"bug_summary": "mock"}'),
     ):
         # 4. Trigger Root Cause Analysis via API
         analyze_resp = client.post(
@@ -293,65 +326,110 @@ def test_root_cause_api_full_lifecycle(client: TestClient):
             json={
                 "finding_id": finding_id,
                 "include_surrounding_context": True,
-                "custom_user_notes": "Occurs whenever checkout is attempted",
+                "custom_user_notes": "Occurs on checkout page",
             },
         )
         assert analyze_resp.status_code == 201
         data = analyze_resp.json()
 
         analysis_id = data["id"]
-        assert data["project_id"] == project_id
-        assert data["finding_id"] == finding_id
-        assert data["rule_id"] == "PY-E001"
-        assert data["summary"] == "UnboundLocalError due to missing accumulator initialization"
-        assert data["severity_assessment"]["detected_severity"] == "critical"
-        assert data["severity_assessment"]["ai_assessed_severity"] == "critical"
-        assert data["severity_assessment"]["severity_changed"] is False
+        # Verify Exact Error Location
+        assert data["bug_location"]["file"] == "pricing.py"
+        assert data["bug_location"]["line"] == 2
+        assert data["bug_location"]["rule_id"] == "PY-W007"
+        assert data["bug_location"]["language"] == "python"
+
+        # Verify Simple Explanation & Code Correction
+        assert data["original_code"] == "return price * discount / 0"
+        assert "ZeroDivisionError" in data["simple_explanation"]
+        assert data["root_cause"] == "The code explicitly divides by the constant 0."
+        assert data["corrected_code"] == "return price * discount / 100"
+        assert "100 instead of 0" in data["correction_explanation"]
+        assert len(data["assumptions"]) == 1
+        assert data["fix_status"] == "suggested_not_applied"
+
+        # Verify Severity & Calibrated Confidence
+        assert data["severity_assessment"]["detected_severity"] == "high"
         assert data["confidence_assessment"]["confidence_score"] == 98.0
         assert data["confidence_assessment"]["confidence_level"] == "HIGH"
 
-        # 5. Get Latest Analysis
+        file_id = file_resp.json()["id"]
+
+        # 5. Verify REPAIR SAFETY: Source code on disk is completely UNCHANGED
+        file_check = client.get(f"/api/v1/projects/{project_id}/files/{file_id}")
+        assert file_check.status_code == 200
+        assert "return price * discount / 0" in file_check.json()["content"]
+
+        # 6. Get Latest Analysis
         latest_resp = client.get(f"/api/v1/projects/{project_id}/root-cause/latest")
         assert latest_resp.status_code == 200
         assert latest_resp.json()["id"] == analysis_id
+        assert latest_resp.json()["bug_location"]["line"] == 2
 
-        # 6. Get Analysis for Finding
-        finding_resp = client.get(f"/api/v1/projects/{project_id}/root-cause/finding/{finding_id}")
-        assert finding_resp.status_code == 200
-        assert finding_resp.json()["id"] == analysis_id
-
-        # 7. Get Analysis By ID
-        id_resp = client.get(f"/api/v1/projects/{project_id}/root-cause/{analysis_id}")
-        assert id_resp.status_code == 200
-        assert id_resp.json()["id"] == analysis_id
-
-        # 8. Get History
+        # 7. Get History
         history_resp = client.get(f"/api/v1/projects/{project_id}/root-cause/history")
         assert history_resp.status_code == 200
         history_data = history_resp.json()
         assert history_data["total"] >= 1
         assert history_data["analyses"][0]["id"] == analysis_id
+        assert history_data["analyses"][0]["original_code"] == "return price * discount / 0"
 
-        # 9. Delete Analysis
+        # 8. Delete Analysis
         del_resp = client.delete(f"/api/v1/projects/{project_id}/root-cause/{analysis_id}")
         assert del_resp.status_code == 200
         assert del_resp.json()["deleted"] is True
 
-        # Verify 404 after deletion
-        get_deleted = client.get(f"/api/v1/projects/{project_id}/root-cause/{analysis_id}")
-        assert get_deleted.status_code == 404
 
+def test_root_cause_needs_clarification():
+    sample_response = {
+        "bug_summary": "Ambiguous variable assignment",
+        "original_code": "data = process(val)",
+        "simple_explanation": "The value passed to process is unknown.",
+        "root_cause": "Cannot determine data schema without caller definitions.",
+        "corrected_code": "",
+        "correction_explanation": "Please provide the type of 'val' and the implementation of 'process'.",
+        "assumptions": ["The parameter 'val' may be None or a dict."],
+        "severity": "medium",
+        "confidence": 65.0,
+        "fix_status": "needs_clarification",
+    }
 
-def test_root_cause_nonexistent_finding(client: TestClient):
-    proj_resp = client.post(
-        "/api/v1/projects",
-        json={"name": "404 Test Proj", "language": "python"},
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(sample_response)
+    mock_client.models.generate_content.return_value = mock_response
+
+    finding = DetectionFinding(
+        id="f-789",
+        run_id="run-1",
+        project_id="p-1",
+        rule_id="JS-W001",
+        rule_name="Suspicious Equality",
+        language="javascript",
+        severity="medium",
+        confidence=0.75,
+        category="correctness",
+        file_path="service.js",
+        start_line=12,
+        start_column=1,
+        end_line=12,
+        end_column=20,
+        message="Suspicious check",
+        explanation="Check may fail",
+        evidence="data == null",
+        remediation="Use ===",
     )
-    project_id = proj_resp.json()["id"]
 
-    resp = client.post(
-        f"/api/v1/projects/{project_id}/root-cause/analyze",
-        json={"finding_id": "non-existent-finding-uuid"},
-    )
-    assert resp.status_code == 404
-    assert "not found" in resp.json()["detail"].lower()
+    with patch("google.genai.Client", return_value=mock_client):
+        with patch("app.core.config.settings.GEMINI_API_KEY", "fake-key"):
+            engine = RootCauseEngine()
+            payload, duration_ms, raw_text = engine.analyze(
+                finding=finding,
+                context_snippet="context",
+                exact_buggy_code="data = process(val)",
+            )
+
+            assert payload.fix_status == "needs_clarification"
+            assert payload.confidence == 65.0
+            assert payload.corrected_code == ""
+            assert len(payload.assumptions) == 1

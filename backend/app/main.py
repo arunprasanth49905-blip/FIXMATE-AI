@@ -9,6 +9,7 @@ from app.api.v1.router import api_v1_router
 from app.core.config import settings
 from app.core.logging import logger
 from app.db.session import Base, engine
+from sqlalchemy import text
 import app.models  # ensure all models are registered with Base
 
 
@@ -16,6 +17,25 @@ import app.models  # ensure all models are registered with Base
 async def lifespan(app: FastAPI):
     # Initialize SQLite database schema
     Base.metadata.create_all(bind=engine)
+    try:
+        with engine.begin() as conn:
+            cursor = conn.execute(text("PRAGMA table_info(root_cause_analyses)"))
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            if existing_cols:  # table exists
+                new_cols = [
+                    ("original_code", "TEXT DEFAULT ''"),
+                    ("simple_explanation", "TEXT DEFAULT ''"),
+                    ("corrected_code", "TEXT DEFAULT ''"),
+                    ("correction_explanation", "TEXT DEFAULT ''"),
+                    ("assumptions_json", "TEXT DEFAULT '[]'"),
+                    ("fix_status", "VARCHAR(32) DEFAULT 'suggested_not_applied'"),
+                ]
+                for col_name, col_def in new_cols:
+                    if col_name not in existing_cols:
+                        conn.execute(text(f"ALTER TABLE root_cause_analyses ADD COLUMN {col_name} {col_def}"))
+    except Exception as e:
+        logger.warning(f"Schema migration check notice: {e}")
+
     logger.info("Database schema initialized successfully")
     yield
 

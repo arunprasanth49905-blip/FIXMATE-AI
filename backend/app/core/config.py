@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # AI Configuration
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
     SUPPORTED_LANGUAGES: List[str] = ["Python", "JavaScript", "TypeScript"]
 
     # Database & Storage Configuration

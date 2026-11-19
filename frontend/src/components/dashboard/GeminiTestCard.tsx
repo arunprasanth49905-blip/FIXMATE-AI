@@ -76,7 +76,7 @@ export const GeminiTestCard: React.FC<GeminiTestCardProps> = ({
           </div>
           <div className="key-value-item">
             <span className="key-label">Selected Model</span>
-            <span className="key-val">{aiStatus?.configured_model || 'gemini-2.5-flash'}</span>
+            <span className="key-val">{aiStatus?.configured_model || 'gemini-3.5-flash-lite'}</span>
           </div>
           <div className="key-value-item">
             <span className="key-label">API Key Security</span>

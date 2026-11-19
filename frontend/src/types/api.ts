@@ -358,6 +358,13 @@ export interface FileDetectionRequest {
 // Phase 5: AI Root Cause Analysis Types
 // ==========================================
 
+export interface BugLocation {
+  file: string;
+  line: number;
+  rule_id: string;
+  language: string;
+}
+
 export interface SeverityAssessment {
   detected_severity: FindingSeverity | string;
   ai_assessed_severity: FindingSeverity | string;
@@ -388,6 +395,17 @@ export interface RootCauseAnalysis {
   duration_ms: number;
   status: 'success' | 'failed' | string;
 
+  // Upgraded Concise & Correction Fields
+  bug_location?: BugLocation;
+  original_code?: string;
+  evidence?: string;
+  simple_explanation?: string;
+  corrected_code?: string;
+  correction_explanation?: string;
+  assumptions?: string[];
+  fix_status?: 'suggested_not_applied' | 'needs_clarification' | string;
+
+  // Backward-compatible fields
   summary: string;
   bug_explanation: string;
   root_cause: string;
@@ -420,6 +438,9 @@ export interface RootCauseHistoryItem {
   file_path: string;
   start_line: number;
   summary: string;
+  original_code?: string;
+  corrected_code?: string;
+  fix_status?: string;
   detected_severity: string;
   ai_assessed_severity: string;
   confidence_score: number;

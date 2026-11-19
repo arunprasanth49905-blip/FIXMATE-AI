@@ -50,7 +50,7 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
     vi.mocked(apiClient.getAIStatus).mockResolvedValue({
       provider: 'Google Gemini',
       configured: false,
-      configured_model: 'gemini-2.5-flash',
+      configured_model: 'gemini-3.5-flash-lite',
       connection_state: 'not_configured',
       message: 'Gemini API key is not configured.',
     });
@@ -88,7 +88,7 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
     vi.mocked(apiClient.getAIStatus).mockResolvedValue({
       provider: 'Google Gemini',
       configured: true,
-      configured_model: 'gemini-2.5-flash',
+      configured_model: 'gemini-3.5-flash-lite',
       connection_state: 'configured_untested',
       message: 'Configured and ready.',
     });
@@ -187,9 +187,9 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
     vi.mocked(apiClient.getAIStatus).mockResolvedValue({
       provider: 'Google Gemini',
       configured: true,
-      configured_model: 'gemini-2.5-flash',
+      configured_model: 'gemini-3.5-flash-lite',
       connection_state: 'configured_untested',
-      message: 'Gemini API key is configured with model gemini-2.5-flash.',
+      message: 'Gemini API key is configured with model gemini-3.5-flash-lite.',
     });
 
     render(
@@ -200,7 +200,7 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
 
     await waitFor(() => {
       expect(screen.getByText('CONFIGURED • UNTESTED')).toBeInTheDocument();
-      expect(screen.getByText('Gemini API key is configured with model gemini-2.5-flash.')).toBeInTheDocument();
+      expect(screen.getByText('Gemini API key is configured with model gemini-3.5-flash-lite.')).toBeInTheDocument();
     });
   });
 
@@ -224,7 +224,7 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
     vi.mocked(apiClient.getAIStatus).mockResolvedValue({
       provider: 'Google Gemini',
       configured: true,
-      configured_model: 'gemini-2.5-flash',
+      configured_model: 'gemini-3.5-flash-lite',
       connection_state: 'configured_untested',
       message: 'Ready to test.',
     });
@@ -233,7 +233,7 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
     vi.mocked(apiClient.testAIConnection).mockResolvedValueOnce({
       success: true,
       provider: 'Google Gemini',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash-lite',
       latency_ms: 312.4,
       message: 'Connection successful (312ms). Model response: PONG',
       timestamp: '2026-11-18T18:00:00Z',
@@ -261,7 +261,7 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
     vi.mocked(apiClient.testAIConnection).mockResolvedValueOnce({
       success: false,
       provider: 'Google Gemini',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash-lite',
       latency_ms: null,
       message: 'Invalid or unauthorized API key.',
       timestamp: '2026-11-18T18:00:05Z',
@@ -296,7 +296,7 @@ describe('FIXMATE AI Dashboard and Integration Tests', () => {
     vi.mocked(apiClient.getAIStatus).mockResolvedValue({
       provider: 'Google Gemini',
       configured: false,
-      configured_model: 'gemini-2.5-flash',
+      configured_model: 'gemini-3.5-flash-lite',
       connection_state: 'not_configured',
       message: 'Not configured.',
     });

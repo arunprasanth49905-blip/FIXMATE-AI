@@ -78,41 +78,64 @@ class GeminiService:
 
         logger.info(f"Initiating Gemini connection test with model '{settings.GEMINI_MODEL}'...")
         start_time = time.perf_counter()
+        max_retries = 2
 
-        try:
-            from google import genai
-            from google.genai import errors
+        for attempt in range(max_retries + 1):
+            try:
+                from google import genai
+                from google.genai import errors
 
-            # Initialize client with the configured key
-            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                # Initialize client with the configured key
+                client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-            # Send a minimal, harmless ping test prompt
-            response = client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents="Ping test for FIXMATE AI backend. Reply with 'PONG'.",
-            )
+                # Send a minimal, harmless ping test prompt
+                response = client.models.generate_content(
+                    model=settings.GEMINI_MODEL,
+                    contents="Ping test for FIXMATE AI backend. Reply with 'PONG'.",
+                )
 
-            latency = round((time.perf_counter() - start_time) * 1000, 2)
-            reply = response.text.strip() if response and response.text else "OK"
+                latency = round((time.perf_counter() - start_time) * 1000, 2)
+                reply = response.text.strip() if response and response.text else "OK"
 
-            result = AITestResponse(
-                success=True,
-                provider="Google Gemini",
-                model=settings.GEMINI_MODEL,
-                latency_ms=latency,
-                message=f"Connection successful ({latency}ms). Model response: {reply[:30]}",
-                timestamp=timestamp,
-                error=None,
-            )
-            self._last_test_result = result
-            logger.info(f"Gemini connection test succeeded in {latency}ms.")
-            return result
+                result = AITestResponse(
+                    success=True,
+                    provider="Google Gemini",
+                    model=settings.GEMINI_MODEL,
+                    latency_ms=latency,
+                    message=f"Connection successful ({latency}ms). Model response: {reply[:30]}",
+                    timestamp=timestamp,
+                    error=None,
+                )
+                self._last_test_result = result
+                logger.info(f"Gemini connection test succeeded in {latency}ms.")
+                return result
 
-        except Exception as exc:
-            latency = round((time.perf_counter() - start_time) * 1000, 2)
-            raw_err = str(exc)
-            safe_err = sanitize_message(raw_err)
-            logger.error(f"Gemini connection test failed: {safe_err}")
+            except Exception as exc:
+                raw_err = str(exc)
+                safe_err = sanitize_message(raw_err)
+                lower_err = safe_err.lower()
+
+                # Retry transient errors (503 high demand, 429 rate limit, timeout)
+                is_transient = (
+                    "503" in safe_err
+                    or "unavailable" in lower_err
+                    or "high demand" in lower_err
+                    or "429" in safe_err
+                    or "resource_exhausted" in lower_err
+                    or "timeout" in lower_err
+                    or "deadline" in lower_err
+                )
+                if attempt < max_retries and is_transient:
+                    sleep_time = (attempt + 1) * 2.0
+                    logger.warning(
+                        "Transient Gemini error on attempt %d: %s. Retrying in %.1fs...",
+                        attempt + 1, safe_err, sleep_time
+                    )
+                    time.sleep(sleep_time)
+                    continue
+
+                latency = round((time.perf_counter() - start_time) * 1000, 2)
+                logger.error(f"Gemini connection test failed: {safe_err}")
 
             error_type = "UNKNOWN_ERROR"
             user_msg = f"Connection failed: {safe_err}"
@@ -122,12 +145,15 @@ class GeminiService:
             if "api key not valid" in lower_err or "api_key_invalid" in lower_err or "permission_denied" in lower_err or "403" in safe_err or "invalid_argument" in lower_err:
                 error_type = "AUTHENTICATION_ERROR"
                 user_msg = "Invalid or unauthorized API key. Check GEMINI_API_KEY in backend .env."
-            elif "not_found" in lower_err or "not found" in lower_err or "model" in lower_err:
+            elif "503" in safe_err or "unavailable" in lower_err or "high demand" in lower_err:
+                error_type = "SERVICE_UNAVAILABLE"
+                user_msg = f"Gemini API is currently experiencing high demand (503). Please retry in a moment."
+            elif "model not found" in lower_err or ("not found" in lower_err and "model" in lower_err) or ("404" in safe_err and "not_found" in lower_err):
                 error_type = "MODEL_NOT_FOUND"
                 user_msg = f"Model '{settings.GEMINI_MODEL}' not found or unsupported."
-            elif "RESOURCE_EXHAUSTED" in safe_err or "quota" in safe_err.lower() or "429" in safe_err:
+            elif "resource_exhausted" in lower_err or "quota" in lower_err or "429" in safe_err or "rate limit" in lower_err:
                 error_type = "QUOTA_EXCEEDED"
-                user_msg = "API quota exceeded. Please check your Gemini rate limits."
+                user_msg = "API quota exceeded or rate limited. Please check your Gemini limits."
             elif "timeout" in safe_err.lower() or "deadline" in safe_err.lower():
                 error_type = "TIMEOUT_ERROR"
                 user_msg = "Request timed out while connecting to Gemini API."

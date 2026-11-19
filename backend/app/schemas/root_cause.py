@@ -3,6 +3,14 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
+class BugLocation(BaseModel):
+    """Exact source code coordinate and metadata for a detected bug."""
+    file: str = Field(..., description="File name or relative path where bug is located")
+    line: int = Field(..., description="Exact line number of the buggy code")
+    rule_id: str = Field(..., description="Bug rule identifier (e.g. PY-W007)")
+    language: str = Field(..., description="Programming language of the source file")
+
+
 class SeverityAssessment(BaseModel):
     """Dual-view severity comparison: authoritative static vs AI assessment."""
     detected_severity: str = Field(..., description="Authoritative severity determined by Phase 4 static engine")
@@ -19,24 +27,24 @@ class ConfidenceAssessment(BaseModel):
     limitations: List[str] = Field(default_factory=list, description="Boundaries and constraints of static analysis")
 
 
-class LLMRootCausePayload(BaseModel):
-    """Schema expected directly from Gemini JSON output."""
-    summary: str = Field(..., description="Brief one-line summary of finding")
-    bug_explanation: str = Field(..., description="What the bug actually is in plain developer terms")
-    root_cause: str = Field(..., description="The fundamental underlying flaw")
-    technical_reasoning: str = Field(..., description="Deep architectural and language-level reasoning")
-    trigger_conditions: List[str] = Field(default_factory=list, description="Specific conditions under which the bug manifests")
-    execution_impact: str = Field(..., description="How the bug alters runtime behavior and state")
-    potential_consequences: List[str] = Field(default_factory=list, description="Concrete failure modes or security implications")
-    ai_assessed_severity: str = Field("medium", description="AI assessed severity: critical, high, medium, low, info")
-    severity_reasoning: str = Field(..., description="Reasoning for AI severity assessment")
-    recommended_approach: str = Field(..., description="Conceptual and architectural remediation guidance (no code patches)")
-    prevention: str = Field(..., description="Best practices, linting, or testing strategies to prevent recurrence")
-    missing_context: List[str] = Field(default_factory=list, description="Missing project files or runtime inputs")
-    confidence_score: float = Field(80.0, ge=0.0, le=100.0, description="Confidence score 0-100")
-    confidence_level: str = Field("HIGH", description="Confidence level HIGH, MEDIUM, LOW")
-    confidence_reason: str = Field(..., description="Justification for confidence score")
-    limitations: List[str] = Field(default_factory=list, description="Known limitations of this static analysis")
+class LLMRootCauseUpgradePayload(BaseModel):
+    """Developer-friendly concise schema returned by Gemini for bug analysis and correction."""
+    bug_summary: str = Field(..., description="Short summary of the bug, e.g. Division by zero")
+    original_code: str = Field(..., description="The original buggy line(s) of source code")
+    simple_explanation: str = Field(..., description="What went wrong explained in simple English for beginner developers")
+    root_cause: str = Field(..., description="Exact root cause explaining why this code produces an error")
+    corrected_code: str = Field(..., description="Gemini's suggested corrected code snippet")
+    correction_explanation: str = Field(..., description="Short explanation of what changed and why it fixes the issue")
+    assumptions: List[str] = Field(default_factory=list, description="Any assumptions made by AI about intent/logic")
+    severity: str = Field("medium", description="critical | high | medium | low | info")
+    severity_reasoning: Optional[str] = Field(None, description="Why this severity level applies")
+    confidence: float = Field(90.0, ge=0.0, le=100.0, description="Confidence percentage 0-100")
+    confidence_reason: Optional[str] = Field(None, description="Why this confidence was assigned")
+    fix_status: str = Field("suggested_not_applied", description="suggested_not_applied | needs_clarification")
+
+
+# Alias for backward compatibility if any internal callers use LLMRootCausePayload
+LLMRootCausePayload = LLMRootCauseUpgradePayload
 
 
 class RootCauseAnalysisResponse(BaseModel):
@@ -58,6 +66,16 @@ class RootCauseAnalysisResponse(BaseModel):
     duration_ms: float
     status: str
 
+    # Upgraded Concise & Correction Fields
+    bug_location: BugLocation
+    original_code: str = Field(default="", description="Exact original buggy source code line")
+    simple_explanation: str = Field(default="", description="Simple English explanation of what went wrong")
+    corrected_code: str = Field(default="", description="Gemini's suggested corrected code block")
+    correction_explanation: str = Field(default="", description="Short explanation of what changed and why")
+    assumptions: List[str] = Field(default_factory=list, description="Assumptions or uncertainties disclosed by AI")
+    fix_status: str = Field(default="suggested_not_applied", description="suggested_not_applied or needs_clarification")
+
+    # Core Investigation Fields (Backward-compatible)
     summary: str
     bug_explanation: str
     root_cause: str
@@ -94,6 +112,9 @@ class RootCauseHistoryItem(BaseModel):
     file_path: str
     start_line: int
     summary: str
+    original_code: Optional[str] = ""
+    corrected_code: Optional[str] = ""
+    fix_status: Optional[str] = "suggested_not_applied"
     detected_severity: str
     ai_assessed_severity: str
     confidence_score: float

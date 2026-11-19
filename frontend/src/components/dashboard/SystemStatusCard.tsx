@@ -81,7 +81,7 @@ export const SystemStatusCard: React.FC<SystemStatusCardProps> = ({
               <Cpu size={14} /> AI Engine Provider
             </span>
             <span className="key-val">
-              {aiStatus?.provider || 'Google Gemini'} ({aiStatus?.configured_model || 'gemini-2.5-flash'})
+              {aiStatus?.provider || 'Google Gemini'} ({aiStatus?.configured_model || 'gemini-3.5-flash-lite'})
             </span>
           </div>
 

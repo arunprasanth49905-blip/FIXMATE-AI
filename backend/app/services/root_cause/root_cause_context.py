@@ -95,3 +95,37 @@ class RootCauseContextBuilder:
         except Exception as e:
             logger.warning("Failed to extract finding context for %s (%s): %s", file_path, project_id, e)
             return f"[Error loading context for {file_path}: {str(e)}]"
+
+    @classmethod
+    def extract_exact_error_line(
+        cls,
+        project_id: str,
+        file_path: str,
+        start_line: int,
+        end_line: int,
+    ) -> str:
+        """
+        Extracts the exact source code line(s) between start_line and end_line
+        without line numbers or markers, with secrets redacted.
+        Returns line unavailable message if not found or out of bounds.
+        """
+        try:
+            target_path, clean_rel = file_service.sanitize_and_resolve_path(project_id, file_path)
+            if not target_path.is_file():
+                return "[Error line location unavailable: file not found on disk]"
+
+            raw_code = target_path.read_text(encoding="utf-8", errors="replace")
+            lines = raw_code.splitlines()
+            total_lines = len(lines)
+
+            if total_lines == 0 or start_line < 1 or start_line > total_lines:
+                return "[Error line location unavailable]"
+
+            to_line = min(total_lines, max(start_line, end_line))
+            target_slice = lines[start_line - 1 : to_line]
+            raw_target = "\n".join(target_slice).strip()
+            return redact_sensitive_data(raw_target)
+        except Exception as e:
+            logger.warning("Failed to extract exact error line for %s:%d: %s", file_path, start_line, e)
+            return "[Error line location unavailable]"
+
