@@ -11,7 +11,11 @@ vi.mock('../services/apiClient', () => ({
     getSystemInfo: vi.fn(),
     getAIStatus: vi.fn(),
     testAIConnection: vi.fn(),
+    getProjects: vi.fn().mockResolvedValue({ total: 0, projects: [] }),
+    getLatestAnalysis: vi.fn().mockRejectedValue(new Error('no analysis')),
   },
+  parseErrorMessage: (err: any, fallback = 'Error') =>
+    typeof err === 'string' ? err : err?.message || fallback,
   ApiClientError: class extends Error {
     status?: number;
     constructor(msg: string, status?: number) {

@@ -4,6 +4,7 @@ FIXMATE AI is an advanced AI-powered software bug detection and autonomous code 
 
 - **Phase 1:** Core foundational full-stack architecture, live system telemetry, secure Google Gemini API integration, and an enterprise light dashboard.
 - **Phase 2:** Project Management & Code Workspace — SQLite database persistence, secure file workspace storage, path traversal protection, interactive Monaco Editor, file tree navigation, and multi-file tab system.
+- **Phase 3:** Multi-Language Code Parsing & Structural Intelligence Engine — Real AST and syntax-tree parsing without execution for Python (`ast`), JavaScript (`tree-sitter-javascript`), and TypeScript/TSX (`tree-sitter-typescript`), deep symbol extraction, syntax diagnostics detection, project-level metrics, and Monaco Editor deep navigation.
 
 ---
 
@@ -38,36 +39,48 @@ FIXMATE AI/
 │   ├── app/
 │   │   ├── main.py                     # FastAPI application entry, CORS, & DB lifespan
 │   │   ├── core/
-│   │   │   ├── config.py               # Pydantic Settings configuration & storage limits
+│   │   │   ├── config.py               # Pydantic Settings configuration, storage & parser limits
 │   │   │   └── logging.py              # Secret-redacting logger
 │   │   ├── db/
 │   │   │   ├── __init__.py
 │   │   │   └── session.py              # SQLite SQLAlchemy engine, Base, & SessionLocal
 │   │   ├── models/
 │   │   │   ├── __init__.py
-│   │   │   └── project.py              # Project and ProjectFile SQLAlchemy models
+│   │   │   ├── project.py              # Project and ProjectFile SQLAlchemy models
+│   │   │   └── analysis.py             # ProjectAnalysis and FileAnalysisRecord models
 │   │   ├── api/v1/
 │   │   │   ├── router.py               # API v1 router aggregation
 │   │   │   └── endpoints/
 │   │   │       ├── health.py           # GET /api/v1/health
 │   │   │       ├── system.py           # GET /info, GET /ai-status, POST /ai-test
 │   │   │       ├── projects.py         # CRUD /api/v1/projects
-│   │   │       └── files.py            # File tree, create, edit, rename, delete, upload
+│   │   │       ├── files.py            # File tree, create, edit, rename, delete, upload
+│   │   │       └── parsing.py          # AST parsing, project analysis, diagnostics APIs
 │   │   ├── schemas/                    # Pydantic data schemas
 │   │   │   ├── health.py
 │   │   │   ├── system.py
 │   │   │   ├── ai.py
 │   │   │   ├── project.py
-│   │   │   └── file.py
+│   │   │   ├── file.py
+│   │   │   └── parsing.py              # AST symbols, diagnostics, statistics, responses
 │   │   └── services/
 │   │       ├── gemini_service.py       # Google GenAI SDK integration & error sanitization
 │   │       ├── project_service.py      # Project creation, listing, updating, deletion
-│   │       └── file_service.py         # Path traversal security, tree building, disk I/O
+│   │       ├── file_service.py         # Path traversal security, tree building, disk I/O
+│   │       └── parsing/                # Phase 3 Multi-Language Parsing Engine
+│   │           ├── base_parser.py      # Abstract BaseParser interface
+│   │           ├── python_parser.py    # Native AST parser (classes, methods, functions, calls)
+│   │           ├── javascript_parser.py# Tree-sitter JS parser (ESM/CJS, classes, arrows)
+│   │           ├── typescript_parser.py# Tree-sitter TS/TSX parser (interfaces, types, enums)
+│   │           ├── parser_registry.py  # Language parser registry and status reporter
+│   │           ├── parser_limits.py    # Resource thresholds (1MB, 500 files, 25MB)
+│   │           ├── syntax_diagnostics.py# Error node converter & diagnostics builder
+│   │           └── project_analysis_service.py # Full workspace scanner & SQLite persistence
 │   ├── data/                           # Local SQLite database & isolated workspaces (gitignored)
 │   │   ├── fixmate.db
 │   │   └── workspaces/{project_id}/...
-│   ├── tests/                          # 23 Pytest unit and integration tests
-│   ├── requirements.txt
+│   ├── tests/                          # 49 Pytest unit and integration tests
+│   ├── requirements.txt                # tree-sitter, tree-sitter-javascript, tree-sitter-typescript
 │   └── .env.example
 ├── frontend/
 │   ├── src/
@@ -76,9 +89,10 @@ FIXMATE AI/
 │   │   │   ├── common/                 # Buttons, Badges, StatusIndicators, Cards, Modal
 │   │   │   ├── layout/                 # Sidebar, Navbar, Main Layout
 │   │   │   ├── dashboard/              # SystemStatus, GeminiTest, Metrics, Activity
-│   │   │   └── workspace/              # FileExplorer, EditorTabs, CodeEditor, FileIcon
+│   │   │   ├── workspace/              # FileExplorer, EditorTabs, CodeEditor, FileIcon
+│   │   │   └── analysis/               # AnalysisPanel, AnalysisSummaryCard, StructuralViewer
 │   │   ├── pages/                      # DashboardPage, ProjectsPage, WorkspacePage, NewAnalysisPage
-│   │   ├── services/                   # apiClient.ts (Typed HTTP client)
+│   │   ├── services/                   # apiClient.ts (Typed HTTP client for Phase 1-3)
 │   │   ├── types/                      # TypeScript API interface definitions
 │   │   └── styles/                     # Modern Light Theme stylesheet
 │   ├── public/
@@ -87,7 +101,8 @@ FIXMATE AI/
 │   └── .env.example
 ├── documentation/
 │   ├── PHASE_1_REPORT.md
-│   └── PHASE_2_REPORT.md               # Phase 2 master verification report
+│   ├── PHASE_2_REPORT.md               # Phase 2 master verification report
+│   └── PHASE_3_REPORT.md               # Phase 3 multi-language parsing report
 └── README.md
 ```
 
@@ -203,12 +218,19 @@ npm run dev
 | `PATCH` | `/api/v1/projects/{project_id}/files/{file_id}` | Rename or move file to a new path. |
 | `DELETE` | `/api/v1/projects/{project_id}/files/{file_id}` | Delete file or directory recursively. |
 | `POST` | `/api/v1/projects/{project_id}/upload` | Upload one or multiple source code files preserving folder structure. |
+| `GET` | `/api/v1/projects/{project_id}/analysis/parser-status` | Report parser engine status, grammars, capabilities, and thresholds. |
+| `POST` | `/api/v1/projects/{project_id}/analysis/parse` | Run full or incremental multi-language AST parsing across project files. |
+| `GET` | `/api/v1/projects/{project_id}/analysis/latest` | Retrieve latest persisted AST analysis summary and file metrics. |
+| `GET` | `/api/v1/projects/{project_id}/analysis/parse/{analysis_id}` | Retrieve specific historical analysis summary and metadata. |
+| `GET` | `/api/v1/projects/{project_id}/analysis/parse/{analysis_id}/files` | List all parsed files with language, lines, symbol counts, and status. |
+| `GET` | `/api/v1/projects/{project_id}/analysis/parse/{analysis_id}/files/{file_id_or_path}` | Get detailed AST symbols, imports, and diagnostics for a specific file. |
+| `GET` | `/api/v1/projects/{project_id}/analysis/parse/{analysis_id}/diagnostics` | Aggregate all syntax errors and diagnostic warnings across the project. |
 
 ---
 
 ## 6. Automated Testing
 
-### Backend Tests (Pytest - 23 Tests)
+### Backend Tests (Pytest - 49 Tests)
 ```cmd
 cd /d "D:\FIXMATE AI\backend"
 .venv\Scripts\activate
@@ -223,8 +245,12 @@ Verifies:
 5. Path traversal prevention (verifies rejection of `../`, `..\\`, `/absolute`, drive letters, and null bytes).
 6. File extension validation & oversized payload protection (`HTTP 413`).
 7. Multipart file upload and database persistence.
+8. Python native AST parser (sync/async functions, classes, decorators, docstrings, imports, calls, loops, syntax error resilience).
+9. JavaScript tree-sitter parser (functions, arrow functions, classes, methods, CommonJS/ESM imports, syntax errors).
+10. TypeScript & TSX tree-sitter parser (interfaces, type aliases, enums, generics, type-only imports, access modifiers, JSX components).
+11. Multi-language project analysis engine, directory exclusion filtering (`node_modules`, `.venv`, `.git`), and SQLite persistence.
 
-### Frontend Tests (Vitest - 14 Tests)
+### Frontend Tests (Vitest - 28 Tests)
 ```cmd
 cd /d "D:\FIXMATE AI\frontend"
 npm test
@@ -237,6 +263,9 @@ Verifies:
 4. Workspace file tree hierarchy rendering.
 5. Opening files into multi-file tabs, tracking unsaved changes, and closing tabs.
 6. Monaco Editor content synchronization and `Ctrl+S` save operations.
+7. Code Intelligence side panel docking, tab switching (Overview, Files, Diagnostics).
+8. AST structural symbol inspection, language distribution charts, and click-to-editor source line navigation.
+9. Resilient HTTP and API error handling (avoiding `[object Object]` rendering).
 
 ### Frontend Production Build
 ```cmd
@@ -250,6 +279,11 @@ npm run build
 
 1. **Path Traversal Protection:** Every incoming file path is strictly sanitized (`/` and `\\` normalized, leading slashes stripped, `..` disallowed, null bytes blocked). The resolved physical path is verified with `path.is_relative_to(project_workspace_dir)`.
 2. **Server Filesystem Anonymization:** API endpoints never expose absolute server paths (e.g. `D:\FIXMATE AI\...`). Only relative paths (`src/main.py`) are returned to the client.
-3. **Execution Prohibition:** Uploaded source files are strictly stored as static data on disk. No uploaded code is executed on the host system.
-4. **Size and Extension Validation:** Configurable upload ceiling (default 10MB per file) and whitelist of allowed development file types.
+3. **Execution Prohibition:** Uploaded source files are strictly stored as static data on disk and inspected strictly via static AST parsing. No user code is executed on the host system.
+4. **AST Resource Protection & Limits:**
+   - Maximum single file parse limit: **1 MB**
+   - Maximum files per analysis run: **500 files**
+   - Maximum total workspace source bytes parsed: **25 MB**
+   - Strict directory exclusions: `node_modules`, `.venv`, `venv`, `.git`, `__pycache__`, `dist`, `build`, `.next`, etc.
 5. **Backend-Only Secrets:** Gemini API keys are isolated exclusively to backend runtime environments with automatic regex redaction.
+6. **No AI Code Leakage in Phase 3:** User code is analyzed locally via native/tree-sitter parsers and is not sent to external AI providers.

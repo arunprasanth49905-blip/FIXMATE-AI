@@ -7,15 +7,17 @@ import {
   FolderPlus,
   Code2,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import { apiClient, parseErrorMessage } from '../services/apiClient';
-import { Project, FileTreeItem } from '../types/api';
+import { Project, FileTreeItem, ProjectAnalysisResponse } from '../types/api';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { FileExplorer } from '../components/workspace/FileExplorer';
 import { EditorTabs, OpenTab } from '../components/workspace/EditorTabs';
 import { CodeEditor } from '../components/workspace/CodeEditor';
+import { AnalysisPanel } from '../components/analysis/AnalysisPanel';
 
 export const WorkspacePage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -51,6 +53,12 @@ export const WorkspacePage: React.FC = () => {
   const [modalError, setModalError] = useState<string | null>(null);
   const [editProjectName, setEditProjectName] = useState('');
 
+  // Phase 3: Structural Intelligence & Parsing State
+  const [isAnalysisPanelOpen, setIsAnalysisPanelOpen] = useState(false);
+  const [latestAnalysis, setLatestAnalysis] = useState<ProjectAnalysisResponse | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [editorTargetPosition, setEditorTargetPosition] = useState<{ line: number; column?: number } | null>(null);
+
   const activeTab = openTabs.find((t) => t.id === activeTabId);
   const activeContent = activeTabId ? tabContents[activeTabId] ?? '' : '';
   const isCurrentFileDirty = activeTabId ? tabContents[activeTabId] !== savedContents[activeTabId] : false;
@@ -67,6 +75,16 @@ export const WorkspacePage: React.FC = () => {
       ]);
       setProject(projData);
       setFiles(filesData);
+
+      // Attempt to load latest analysis if available (silent fallback if not yet analyzed)
+      if (typeof apiClient.getLatestAnalysis === 'function') {
+        try {
+          const latest = await apiClient.getLatestAnalysis(projectId);
+          setLatestAnalysis(latest);
+        } catch {
+          // No previous analysis exists, default clean state
+        }
+      }
     } catch (err: unknown) {
       const msg = parseErrorMessage(err, 'Failed to load workspace.');
       setProjectError(msg);
@@ -371,6 +389,43 @@ export const WorkspacePage: React.FC = () => {
     }
   };
 
+  // Phase 3: Trigger Codebase Parsing
+  const handleTriggerAnalysis = async () => {
+    if (!projectId) return;
+    setIsAnalyzing(true);
+    try {
+      const res = await apiClient.analyzeProject(projectId);
+      setLatestAnalysis(res);
+      setIsAnalysisPanelOpen(true);
+    } catch (err: unknown) {
+      const msg = parseErrorMessage(err, 'Codebase analysis failed. Please check logs.');
+      alert(msg);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Phase 3: Navigate from Symbol/Diagnostic to Monaco Editor
+  const handleNavigateToSource = (targetPath: string, line: number, column = 0) => {
+    const findItemInTree = (items: FileTreeItem[]): FileTreeItem | null => {
+      for (const item of items) {
+        if (item.path === targetPath || item.path.endsWith(targetPath)) return item;
+        if (item.children) {
+          const found = findItemInTree(item.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const targetFile = findItemInTree(files);
+    if (targetFile) {
+      handleSelectFile(targetFile);
+    }
+
+    setEditorTargetPosition({ line, column });
+  };
+
   if (isLoadingProject) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: 'var(--color-navy-500)' }}>
@@ -431,6 +486,36 @@ export const WorkspacePage: React.FC = () => {
           <Button
             variant="secondary"
             size="sm"
+            onClick={() => setIsAnalysisPanelOpen(!isAnalysisPanelOpen)}
+            data-testid="toggle-intelligence-button"
+            title="Toggle Structural Code Intelligence (Phase 3)"
+            style={{
+              borderColor: isAnalysisPanelOpen ? 'var(--color-blue-primary)' : undefined,
+              backgroundColor: isAnalysisPanelOpen ? 'var(--color-blue-subtle)' : undefined,
+            }}
+          >
+            <Sparkles size={13} style={{ color: 'var(--color-blue-primary)' }} />
+            <span>Intelligence</span>
+            {latestAnalysis && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  padding: '1px 5px',
+                  borderRadius: '10px',
+                  backgroundColor: latestAnalysis.total_diagnostics_count > 0 ? 'var(--color-amber-subtle)' : 'var(--color-surface)',
+                  color: latestAnalysis.total_diagnostics_count > 0 ? 'var(--color-amber-warning)' : 'var(--color-navy-600)',
+                  fontWeight: 600,
+                  marginLeft: '2px',
+                }}
+              >
+                {latestAnalysis.statistics.parsed_files}
+              </span>
+            )}
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => handleOpenCreateFile()}
             title="Create File"
           >
@@ -476,7 +561,7 @@ export const WorkspacePage: React.FC = () => {
         />
 
         {/* Right: Code Editor Pane */}
-        <main className="editor-pane">
+        <main className="editor-pane" style={{ flex: isAnalysisPanelOpen ? '1 1 50%' : '1' }}>
           <EditorTabs
             tabs={openTabs}
             activeTabId={activeTabId}
@@ -492,6 +577,7 @@ export const WorkspacePage: React.FC = () => {
               isBinary={tabBinaryStatus[activeTab.id] || false}
               isLoading={isLoadingFile}
               error={fileError}
+              targetPosition={editorTargetPosition}
             />
           ) : (
             <div className="editor-empty-state">
@@ -540,6 +626,28 @@ export const WorkspacePage: React.FC = () => {
             </div>
           </footer>
         </main>
+
+        {/* Phase 3 Code Intelligence Side Panel */}
+        {isAnalysisPanelOpen && (
+          <aside
+            style={{
+              flex: '1 1 50%',
+              maxWidth: '680px',
+              minWidth: '380px',
+              height: '100%',
+              zIndex: 5,
+            }}
+          >
+            <AnalysisPanel
+              projectId={projectId!}
+              analysis={latestAnalysis}
+              isAnalyzing={isAnalyzing}
+              onAnalyzeProject={handleTriggerAnalysis}
+              onClose={() => setIsAnalysisPanelOpen(false)}
+              onNavigateToSource={handleNavigateToSource}
+            />
+          </aside>
+        )}
       </div>
 
       {/* Modal: Create File */}
@@ -550,7 +658,7 @@ export const WorkspacePage: React.FC = () => {
       >
         <form onSubmit={handleCreateFileSubmit}>
           {modalError && (
-            <div style={{ padding: '8px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '12.5px', marginBottom: '12px' }}>
+            <div data-testid="modal-error" style={{ padding: '8px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '12.5px', marginBottom: '12px' }}>
               {modalError}
             </div>
           )}
@@ -561,6 +669,7 @@ export const WorkspacePage: React.FC = () => {
             </label>
             <input
               type="text"
+              data-testid="file-path-input"
               className="form-input"
               placeholder="e.g. main.py or server.js"
               value={newFileName}
@@ -577,7 +686,7 @@ export const WorkspacePage: React.FC = () => {
             <Button type="button" variant="secondary" onClick={() => setIsCreateFileModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" data-testid="create-file-submit">
               Create File
             </Button>
           </div>

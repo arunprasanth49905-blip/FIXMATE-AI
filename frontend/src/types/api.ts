@@ -116,3 +116,161 @@ export interface FileUploadResponse {
   uploaded: FileMetadata[];
   errors: string[];
 }
+
+// ==========================================
+// Phase 3: Parsing & Structural Intelligence Types
+// ==========================================
+
+export interface ParameterInfo {
+  name: string;
+  type?: string | null;
+  default_value?: string | null;
+}
+
+export interface Symbol {
+  id: string;
+  name: string;
+  kind: 'function' | 'async_function' | 'method' | 'class' | 'interface' | 'enum' | 'type_alias' | 'variable' | 'constant';
+  file_id?: string | null;
+  file_path?: string | null;
+  start_line: number;
+  end_line: number;
+  start_column: number;
+  end_column: number;
+  nesting_level: number;
+  parent_symbol?: string | null;
+  is_async: boolean;
+  is_exported: boolean;
+  parameters?: ParameterInfo[] | null;
+  return_type?: string | null;
+  visibility?: 'public' | 'private' | 'protected' | null;
+  docstring?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ImportSymbol {
+  source_module: string;
+  imported_names: string[];
+  alias?: string | null;
+  import_type: string;
+  file_id?: string | null;
+  file_path?: string | null;
+  line: number;
+  column: number;
+  is_type_only: boolean;
+}
+
+export interface SyntaxDiagnostic {
+  id: string;
+  file_id?: string | null;
+  file_path: string;
+  severity: 'error' | 'warning' | 'info';
+  category: string;
+  message: string;
+  line: number;
+  column: number;
+  end_line?: number | null;
+  end_column?: number | null;
+  parser_name: string;
+  error_code?: string | null;
+}
+
+export interface FileStatistics {
+  lines: number;
+  functions: number;
+  async_functions: number;
+  classes: number;
+  methods: number;
+  imports: number;
+  variables: number;
+  constants: number;
+  loops: number;
+  conditions: number;
+  calls: number;
+}
+
+export interface FileAnalysis {
+  analysis_id?: string | null;
+  project_id: string;
+  file_id?: string | null;
+  file_path: string;
+  language: string;
+  parser: string;
+  status: 'success' | 'diagnostics' | 'failed' | 'skipped';
+  source_hash: string;
+  source_size: number;
+  analysis_timestamp: string;
+  statistics: FileStatistics;
+  symbols: Symbol[];
+  imports: ImportSymbol[];
+  diagnostics: SyntaxDiagnostic[];
+  structure: Record<string, unknown>;
+  warnings?: string[];
+}
+
+export interface SkippedFile {
+  file_path: string;
+  reason: string;
+  size_bytes: number;
+}
+
+export interface ProjectStatistics {
+  total_files: number;
+  supported_files: number;
+  parsed_files: number;
+  failed_files: number;
+  skipped_files: number;
+  python_files: number;
+  javascript_files: number;
+  typescript_files: number;
+  total_lines: number;
+  total_functions: number;
+  total_async_functions: number;
+  total_classes: number;
+  total_methods: number;
+  total_imports: number;
+  total_variables: number;
+  total_loops: number;
+  total_conditions: number;
+  total_calls: number;
+  total_diagnostics: number;
+  duration_ms: number;
+}
+
+export interface ProjectAnalysisResponse {
+  analysis_id: string;
+  project_id: string;
+  status: 'completed' | 'completed_with_diagnostics' | 'failed' | 'cancelled';
+  start_time: string;
+  end_time: string;
+  duration_ms: number;
+  statistics: ProjectStatistics;
+  language_distribution: Record<string, number>;
+  skipped_files: SkippedFile[];
+  warnings: string[];
+  total_diagnostics_count: number;
+  files: FileAnalysis[];
+}
+
+export interface ParserLimitConfig {
+  max_file_size_bytes: number;
+  max_files_per_analysis: number;
+  max_total_source_bytes: number;
+  excluded_directories: string[];
+}
+
+export interface ParserStatusResponse {
+  available_parsers: Record<string, string>;
+  supported_languages: string[];
+  supported_extensions: Record<string, string[]>;
+  parser_versions: Record<string, string>;
+  limits: ParserLimitConfig;
+  readiness: boolean;
+  capabilities: Record<string, string[]>;
+}
+
+export interface ProjectParseRequest {
+  file_ids?: string[];
+  file_paths?: string[];
+  exclude_dirs?: string[];
+}

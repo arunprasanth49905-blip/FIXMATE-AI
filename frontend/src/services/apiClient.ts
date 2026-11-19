@@ -12,6 +12,11 @@ import {
   FileTreeItem,
   FileCreatePayload,
   FileUploadResponse,
+  ParserStatusResponse,
+  ProjectAnalysisResponse,
+  FileAnalysis,
+  SyntaxDiagnostic,
+  ProjectParseRequest,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -285,5 +290,41 @@ export const apiClient = {
       method: 'POST',
       body: formData,
     }, 60000); // 60s timeout for large uploads
+  },
+
+  // Phase 3 Code Parsing & Structural Intelligence APIs
+  getParserStatus: (projectId: string): Promise<ParserStatusResponse> => {
+    return request<ParserStatusResponse>(`/projects/${projectId}/analysis/parser-status`);
+  },
+
+  analyzeProject: (projectId: string, payload?: ProjectParseRequest): Promise<ProjectAnalysisResponse> => {
+    return request<ProjectAnalysisResponse>(`/projects/${projectId}/analysis/parse`, {
+      method: 'POST',
+      body: payload ? JSON.stringify(payload) : undefined,
+    }, 120000); // 2 minute timeout for full codebase parsing
+  },
+
+  getLatestAnalysis: (projectId: string): Promise<ProjectAnalysisResponse> => {
+    return request<ProjectAnalysisResponse>(`/projects/${projectId}/analysis/latest`);
+  },
+
+  getAnalysisById: (projectId: string, analysisId: string): Promise<ProjectAnalysisResponse> => {
+    return request<ProjectAnalysisResponse>(`/projects/${projectId}/analysis/parse/${analysisId}`);
+  },
+
+  getAnalyzedFiles: (projectId: string, analysisId: string, language?: string, status?: string): Promise<FileAnalysis[]> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    if (status) params.append('status', status);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return request<FileAnalysis[]>(`/projects/${projectId}/analysis/parse/${analysisId}/files${query}`);
+  },
+
+  getFileAnalysis: (projectId: string, analysisId: string, fileIdOrPath: string): Promise<FileAnalysis> => {
+    return request<FileAnalysis>(`/projects/${projectId}/analysis/parse/${analysisId}/files/${encodeURIComponent(fileIdOrPath)}`);
+  },
+
+  getAnalysisDiagnostics: (projectId: string, analysisId: string): Promise<SyntaxDiagnostic[]> => {
+    return request<SyntaxDiagnostic[]>(`/projects/${projectId}/analysis/parse/${analysisId}/diagnostics`);
   },
 };

@@ -1,5 +1,5 @@
-import React from 'react';
-import Editor from '@monaco-editor/react';
+import React, { useRef, useEffect } from 'react';
+import Editor, { OnMount } from '@monaco-editor/react';
 import { AlertCircle, Lock } from 'lucide-react';
 
 interface CodeEditorProps {
@@ -9,6 +9,7 @@ interface CodeEditorProps {
   isBinary?: boolean;
   isLoading?: boolean;
   error?: string | null;
+  targetPosition?: { line: number; column?: number } | null;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -18,7 +19,26 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   isBinary = false,
   isLoading = false,
   error = null,
+  targetPosition = null,
 }) => {
+  const editorRef = useRef<any>(null);
+
+  const handleEditorDidMount: OnMount = (editor) => {
+    editorRef.current = editor;
+    if (targetPosition) {
+      editor.revealLineInCenter(targetPosition.line);
+      editor.setPosition({ lineNumber: targetPosition.line, column: targetPosition.column || 1 });
+      editor.focus();
+    }
+  };
+
+  useEffect(() => {
+    if (editorRef.current && targetPosition) {
+      editorRef.current.revealLineInCenter(targetPosition.line);
+      editorRef.current.setPosition({ lineNumber: targetPosition.line, column: targetPosition.column || 1 });
+      editorRef.current.focus();
+    }
+  }, [targetPosition]);
   const getLanguage = (name: string): string => {
     const ext = name.split('.').pop()?.toLowerCase();
     switch (ext) {
@@ -103,6 +123,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         language={getLanguage(fileName)}
         value={value}
         theme="vs-light"
+        onMount={handleEditorDidMount}
         onChange={(val) => onChange(val || '')}
         options={{
           fontSize: 13.5,

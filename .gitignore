@@ -58,3 +58,7 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
+
+# Scratch scripts
+scratch/
+backend/scratch/

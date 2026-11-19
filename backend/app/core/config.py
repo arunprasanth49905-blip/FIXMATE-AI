@@ -14,12 +14,21 @@ class Settings(BaseSettings):
     # AI Configuration
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
-    SUPPORTED_LANGUAGES: List[str] = ["Python", "JavaScript"]
+    SUPPORTED_LANGUAGES: List[str] = ["Python", "JavaScript", "TypeScript"]
 
     # Database & Storage Configuration
     DATABASE_URL: str = "sqlite:///./data/fixmate.db"
     WORKSPACE_ROOT: str = "./data/workspaces"
     MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB per file
+
+    # Phase 3: Parsing & Structural Intelligence Configuration
+    MAX_PARSER_FILE_SIZE_BYTES: int = 1 * 1024 * 1024  # 1 MB max single file
+    MAX_FILES_PER_ANALYSIS: int = 500                  # 500 files per project
+    MAX_TOTAL_ANALYSIS_SOURCE_BYTES: int = 25 * 1024 * 1024  # 25 MB max total source
+    PARSER_EXCLUDE_DIRS: List[str] = [
+        "node_modules", ".git", ".venv", "venv", "__pycache__", "dist", "build",
+        "coverage", ".next", ".vite", "vendor", ".pytest_cache"
+    ]
 
     ALLOWED_EXTENSIONS: List[str] = [
         ".py", ".pyw", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",

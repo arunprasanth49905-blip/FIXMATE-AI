@@ -33,6 +33,7 @@ vi.mock('../services/apiClient', async () => {
       renameFile: vi.fn(),
       deleteFile: vi.fn(),
       uploadFiles: vi.fn(),
+      getLatestAnalysis: vi.fn().mockRejectedValue(new Error('no analysis')),
     },
   };
 });
@@ -137,7 +138,9 @@ describe('FIXMATE AI Phase 2: Error Handling & Security Tests', () => {
       const newFileBtn = screen.getByTestId('new-file-button');
       fireEvent.click(newFileBtn);
 
-      expect(screen.getByTestId('file-path-input')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('file-path-input')).toBeInTheDocument();
+      });
 
       // Enter malicious path
       fireEvent.change(screen.getByTestId('file-path-input'), {
@@ -200,6 +203,10 @@ describe('FIXMATE AI Phase 2: Error Handling & Security Tests', () => {
       for (const fileName of testFiles) {
         // Open new file modal
         fireEvent.click(screen.getByTestId('new-file-button'));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('file-path-input')).toBeInTheDocument();
+        });
 
         // Enter filename
         fireEvent.change(screen.getByTestId('file-path-input'), {
