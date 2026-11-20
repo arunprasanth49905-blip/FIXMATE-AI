@@ -45,7 +45,8 @@ class DetectionEngine:
         ast_tree = None
         tree_sitter_node = None
 
-        if language == "Python":
+        lang_norm = (language or "").lower()
+        if lang_norm in ("python", "py"):
             try:
                 ast_tree = ast.parse(source_code, filename=file_path)
             except SyntaxError:
@@ -54,7 +55,7 @@ class DetectionEngine:
                 logger.debug(f"Python parse error on {file_path}: {e}")
                 ast_tree = None
 
-        elif language == "JavaScript":
+        elif lang_norm in ("javascript", "js"):
             try:
                 source_bytes = source_code.encode("utf-8")
                 js_parser = parser_registry._parsers.get("javascript")
@@ -64,7 +65,7 @@ class DetectionEngine:
                 logger.debug(f"JS parse error on {file_path}: {e}")
                 tree_sitter_node = None
 
-        elif language == "TypeScript":
+        elif lang_norm in ("typescript", "ts"):
             try:
                 source_bytes = source_code.encode("utf-8")
                 ts_parser = parser_registry._parsers.get("typescript")

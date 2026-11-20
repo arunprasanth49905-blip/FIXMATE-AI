@@ -24,8 +24,9 @@ import {
   Loader2,
   Lock,
 } from 'lucide-react';
-import { RepairProposal, AuditLogEntry } from '../../types/api';
+import { RepairProposal, AuditLogEntry, VerificationReportResponse } from '../../types/api';
 import { apiClient, parseErrorMessage } from '../../services/apiClient';
+import { RepairVerificationCard } from './RepairVerificationCard';
 
 interface RepairProposalCardProps {
   proposal: RepairProposal;
@@ -72,6 +73,10 @@ export const RepairProposalCard: React.FC<RepairProposalCardProps> = ({
   const [showAuditTrail, setShowAuditTrail] = useState(false);
   const [auditEvents, setAuditEvents] = useState<AuditLogEntry[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+
+  // Phase 8: Verification State
+  const [verificationReport, setVerificationReport] = useState<VerificationReportResponse | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   // Status and Error Messages
   const [actionError, setActionError] = useState<string | null>(null);
@@ -232,6 +237,52 @@ export const RepairProposalCard: React.FC<RepairProposalCardProps> = ({
       }
     }
     setShowAuditTrail(!showAuditTrail);
+  };
+
+  // Phase 8: Fetch verification history if already applied
+  React.useEffect(() => {
+    if (isApplied && effectiveProjectId && !verificationReport) {
+      try {
+        const promise = apiClient.getRepairVerificationHistory?.(effectiveProjectId, proposal.id);
+        if (promise && typeof promise.then === 'function') {
+          promise
+            .then((res) => {
+              if (res && res.verifications && res.verifications.length > 0) {
+                setVerificationReport(res.verifications[0]);
+              }
+            })
+            .catch(() => {
+              // No verification history yet
+            });
+        }
+      } catch {
+        // Safe fallback if mock is absent
+      }
+    }
+  }, [isApplied, effectiveProjectId, proposal.id]);
+
+  // Phase 8: Verify Repair Handler
+  const handleVerifyRepair = async () => {
+    if (!effectiveProjectId) return;
+    setIsVerifying(true);
+    setActionError(null);
+    try {
+      const report = await apiClient.verifyRepair(effectiveProjectId, proposal.id);
+      setVerificationReport(report);
+      if (report.overall_status === 'verified') {
+        setActionSuccess('Automated verification PASSED: Code is syntactically valid and original bug resolved with zero regressions.');
+      } else if (report.overall_status === 'stale') {
+        setActionError('Verification reported STALE: Source code on disk has been modified after patch application.');
+      } else if (report.overall_status === 'failed') {
+        setActionError(`Verification FAILED: ${report.error_message || 'Original bug is still present or regressions detected.'}`);
+      } else if (report.overall_status === 'partial') {
+        setActionSuccess('Verification completed with PARTIAL status.');
+      }
+    } catch (err: unknown) {
+      setActionError(parseErrorMessage(err, 'Failed to verify repair.'));
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const renderDiffLines = (diffText: string) => {
@@ -948,6 +999,39 @@ export const RepairProposalCard: React.FC<RepairProposalCardProps> = ({
               {isApplied && (
                 <>
                   <button
+                    onClick={handleVerifyRepair}
+                    disabled={isVerifying}
+                    data-testid="verify-repair-btn"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      backgroundColor: '#0284c7',
+                      color: '#ffffff',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: isVerifying ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    }}
+                    title="Run automated static verification checks on the applied repair"
+                  >
+                    {isVerifying ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" data-testid="verifying-spinner" />
+                        <span>Verifying Repair...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={13} />
+                        <span>Verify Repair</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
                     onClick={() => setShowRollbackModal(true)}
                     disabled={isRollingBack}
                     data-testid="rollback-repair-btn"
@@ -1113,6 +1197,19 @@ export const RepairProposalCard: React.FC<RepairProposalCardProps> = ({
               </div>
             )}
           </div>
+        )}
+
+        {/* =========================================================================
+            PHASE 8: AUTOMATED VERIFICATION CARD
+           ========================================================================= */}
+        {isApplied && verificationReport && effectiveProjectId && (
+          <RepairVerificationCard
+            report={verificationReport}
+            projectId={effectiveProjectId}
+            proposalId={proposal.id}
+            onReverify={handleVerifyRepair}
+            isVerifying={isVerifying}
+          />
         )}
 
         {/* =========================================================================

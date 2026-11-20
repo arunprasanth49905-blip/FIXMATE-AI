@@ -609,3 +609,70 @@ export interface ProposalAuditHistoryResponse {
   events: AuditLogEntry[];
 }
 
+// ==========================================
+// Phase 8: Automated Verification Types
+// ==========================================
+
+export interface VerificationCheck {
+  name: string;
+  status: 'passed' | 'failed' | 'warning' | 'skipped';
+  message: string;
+  details?: string | null;
+}
+
+export interface FindingComparisonItem {
+  id?: string | null;
+  rule_id: string;
+  rule_name: string;
+  severity: string;
+  category?: string;
+  file_path: string;
+  start_line: number;
+  start_column?: number;
+  end_line: number;
+  end_column?: number;
+  message: string;
+  evidence?: string;
+  is_target?: boolean;
+}
+
+export interface FindingsComparison {
+  target_rule_id: string;
+  target_finding_status: 'resolved' | 'still_present' | 'inconclusive' | 'not_applicable';
+  before_count: number;
+  after_count: number;
+  resolved_count: number;
+  regression_count: number;
+  new_findings: FindingComparisonItem[];
+  removed_findings: FindingComparisonItem[];
+  unchanged_findings: FindingComparisonItem[];
+}
+
+export interface VerificationReportResponse {
+  id: string;
+  project_id: string;
+  proposal_id: string;
+  file_path: string;
+  overall_status: 'verified' | 'failed' | 'partial' | 'inconclusive' | 'stale';
+  syntax_status: 'passed' | 'failed' | 'skipped';
+  target_bug_status: 'resolved' | 'still_present' | 'inconclusive' | 'not_applicable';
+  regression_status: 'passed' | 'warning' | 'failed';
+  pre_apply_fingerprint: string;
+  post_apply_fingerprint: string;
+  verified_fingerprint: string;
+  is_stale: boolean;
+  checks: VerificationCheck[];
+  comparison: FindingsComparison;
+  error_message?: string | null;
+  duration_ms: number;
+  created_at: string;
+}
+
+export interface VerificationHistoryResponse {
+  project_id: string;
+  proposal_id: string;
+  total: number;
+  verifications: VerificationReportResponse[];
+}
+
+

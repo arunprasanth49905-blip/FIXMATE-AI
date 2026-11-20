@@ -34,6 +34,8 @@ import {
   ApplyRepairResponse,
   RollbackRepairResponse,
   ProposalAuditHistoryResponse,
+  VerificationReportResponse,
+  VerificationHistoryResponse,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -467,5 +469,21 @@ export const apiClient = {
 
   getRepairAuditLog: (projectId: string, proposalId: string): Promise<ProposalAuditHistoryResponse> => {
     return request<ProposalAuditHistoryResponse>(`/projects/${projectId}/repair/${proposalId}/audit-log`);
+  },
+
+  // Phase 8 Automated Verification & Repair Validation APIs
+  verifyRepair: (projectId: string, proposalId: string): Promise<VerificationReportResponse> => {
+    return request<VerificationReportResponse>(`/projects/${projectId}/repair/${proposalId}/verify`, {
+      method: 'POST',
+    });
+  },
+
+  getRepairVerificationHistory: (projectId: string, proposalId: string, limit?: number): Promise<VerificationHistoryResponse> => {
+    const q = limit ? `?limit=${limit}` : '';
+    return request<VerificationHistoryResponse>(`/projects/${projectId}/repair/${proposalId}/verification-history${q}`);
+  },
+
+  getVerificationById: (projectId: string, verificationId: string): Promise<VerificationReportResponse> => {
+    return request<VerificationReportResponse>(`/projects/${projectId}/verification/${verificationId}`);
   },
 };

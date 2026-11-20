@@ -9,6 +9,7 @@ FIXMATE AI is an advanced AI-powered software bug detection and autonomous code 
 - **Phase 5:** AI Root Cause Analysis Engine — Deep semantic investigation powered by Google Gemini (`google-genai` SDK) analyzing deterministic findings without executing code. Features dual-severity comparison (authoritative static vs AI assessed), calibrated confidence scoring (0-100), root cause breakdown, execution/state impact, failure consequences, conceptual guidance (strictly no code patches), secret redaction, and SQLite analysis history.
 - **Phase 6:** Intelligent Code Repair & Safe Patch Generation Engine — Safe patch synthesis powered by Google Gemini 3.5 Flash Lite (`gemini-3.5-flash-lite`). Produces in-memory unified diffs with line-level indentation preservation, SHA-256 source freshness fingerprinting, multi-layer deterministic validation (AST syntax parsing, patch reversibility, path confinement), and interactive review in Monaco without writing to disk files.
 - **Phase 7:** Human Approval & Controlled Patch Application Engine — The first phase authorized to safely modify source files on disk. Strictly governed by explicit human approval (`/approve`) and confirmation dialogs (`confirm_application=True`). Features byte-for-byte pre-application backups in `.fixmate/backups/`, atomic temporary file swaps (`.tmp` + `os.replace`), post-write AST syntax verification with immediate failure recovery, conflict-guarded rollback (`/rollback`), and immutable audit logging (`repair_audit_logs`).
+- **Phase 8:** Automated Verification & Repair Validation — Static, read-only post-repair evaluation platform. Verifies repaired code integrity against 5 deterministic static checks: applied patch integrity (post-apply SHA-256), source syntax verification (Python AST, Tree-sitter JS/TS), original bug resolution (`RESOLVED` vs `STILL_PRESENT`), regression analysis (zero new findings), and change scope validation. Persists verification runs in `repair_verifications` and provides rich status reporting (`verified`, `failed`, `partial`, `stale`, `inconclusive`) with interactive UI cards without executing user code.
 
 ---
 
@@ -54,7 +55,8 @@ FIXMATE AI/
 │   │   │   ├── analysis.py             # ProjectAnalysis and FileAnalysisRecord models
 │   │   │   ├── detection.py            # DetectionRun and DetectionFinding SQLAlchemy models
 │   │   │   ├── root_cause.py           # RootCauseAnalysis SQLAlchemy model
-│   │   │   └── repair.py               # Phase 6 RepairProposal SQLAlchemy model
+│   │   │   ├── repair.py               # Phase 6 & 7 RepairProposal and RepairAuditLog models
+│   │   │   └── verification.py         # Phase 8 RepairVerification model (repair_verifications)
 │   │   ├── api/v1/
 │   │   │   ├── router.py               # API v1 router aggregation
 │   │   │   └── endpoints/
@@ -65,7 +67,8 @@ FIXMATE AI/
 │   │   │       ├── parsing.py          # AST parsing, project analysis, diagnostics APIs
 │   │   │       ├── detection.py        # Bug detection runs, findings, rules catalog APIs
 │   │   │       ├── root_cause.py       # AI Root Cause Analysis, history, and single finding RCA APIs
-│   │   │       └── repair.py           # Phase 6 Safe Patch Generation, history, and proposal APIs
+│   │   │       ├── repair.py           # Phase 6 & 7 Patch Generation, Approval, Apply, Rollback APIs
+│   │   │       └── verification.py     # Phase 8 Automated Verification & Validation APIs
 │   │   ├── schemas/                    # Pydantic data schemas
 │   │   │   ├── health.py
 │   │   │   ├── system.py
@@ -75,7 +78,8 @@ FIXMATE AI/
 │   │   │   ├── parsing.py              # AST symbols, diagnostics, statistics, responses
 │   │   │   ├── detection.py            # Finding, DetectionRunResponse, rules schemas
 │   │   │   ├── root_cause.py           # RootCauseAnalysisResponse, history, confidence schemas
-│   │   │   └── repair.py               # Phase 6 PatchValidationDetails, RepairProposal schemas
+│   │   │   ├── repair.py               # Phase 6 & 7 PatchValidationDetails, RepairProposal schemas
+│   │   │   └── verification.py         # Phase 8 VerificationCheck, FindingsComparison, Report schemas
 │   │   └── services/
 │   │       ├── gemini_service.py       # Google GenAI SDK integration & error sanitization
 │   │       ├── project_service.py      # Project creation, listing, updating, deletion
@@ -102,20 +106,27 @@ FIXMATE AI/
 │   │       │   ├── root_cause_prompt_builder.py # Delimiter safety, anti-injection, schema prompt
 │   │       │   ├── root_cause_engine.py    # Gemini client, structured JSON parser, calibrated confidence
 │   │       │   └── root_cause_service.py   # Business logic, SQLite CRUD, dual severity comparison
-│   │       └── repair/                 # Phase 6 & 7 Code Repair & Controlled Patch Application
-│   │           ├── repair_context.py       # Source SHA-256 fingerprinting, evidence slice, redaction
-│   │           ├── repair_prompt_builder.py# 18 AI instructions, anti-injection, JSON schema
-│   │           ├── repair_engine.py        # Gemini 3.5 Flash Lite synthesis & transient 503 retry
-│   │           ├── patch_generator.py      # Unified diff construction & indentation preservation
-│   │           ├── patch_validator.py      # Freshness, path security, reversibility, AST syntax
-│   │           ├── patch_application_service.py # Phase 7 atomic apply, backup, rollback, audit trail
-│   │           └── repair_service.py       # Orchestrator, SQLite persistence, staleness check
+│   │       ├── repair/                 # Phase 6 & 7 Code Repair & Controlled Patch Application
+│   │       │   ├── repair_context.py       # Source SHA-256 fingerprinting, evidence slice, redaction
+│   │       │   ├── repair_prompt_builder.py# 18 AI instructions, anti-injection, JSON schema
+│   │       │   ├── repair_engine.py        # Gemini 3.5 Flash Lite synthesis & transient 503 retry
+│   │       │   ├── patch_generator.py      # Unified diff construction & indentation preservation
+│   │       │   ├── patch_validator.py      # Freshness, path security, reversibility, AST syntax
+│   │       │   ├── patch_application_service.py # Phase 7 atomic apply, backup, rollback, audit trail
+│   │       │   └── repair_service.py       # Orchestrator, SQLite persistence, staleness check
+│   │       └── verification/           # Phase 8 Automated Verification & Validation Engine
+│   │           ├── syntax_verifier.py  # Python AST & Tree-sitter JS/TS syntax integrity
+│   │           ├── finding_comparison.py# Target finding matching & delta classification
+│   │           ├── regression_verifier.py# Severity-based regression detection
+│   │           ├── verification_report_builder.py # 5-check synthesizer & status computer
+│   │           └── verification_service.py # Verification orchestrator, staleness guard, audit logging
 │   ├── data/                           # Local SQLite database & isolated workspaces (gitignored)
 │   │   ├── fixmate.db
 │   │   └── workspaces/{project_id}/...
-│   ├── tests/                          # 118 Pytest unit and integration tests (100% pass)
+│   ├── tests/                          # 130 Pytest unit and integration tests (100% pass)
 │   │   ├── test_repair.py              # Phase 6 comprehensive patch engine test suite
-│   │   └── test_patch_application.py   # Phase 7 approval, controlled write, rollback, audit tests
+│   │   ├── test_patch_application.py   # Phase 7 approval, controlled write, rollback, audit tests
+│   │   └── test_verification.py        # Phase 8 verification checks, regression & staleness tests
 │   ├── requirements.txt                # tree-sitter, tree-sitter-javascript, tree-sitter-typescript
 │   └── .env.example
 ├── frontend/
