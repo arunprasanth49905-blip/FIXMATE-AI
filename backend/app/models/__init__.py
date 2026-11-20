@@ -2,7 +2,7 @@ from app.models.project import Project, ProjectFile
 from app.models.analysis import ProjectAnalysis, FileAnalysisRecord
 from app.models.detection import DetectionRun, DetectionFinding
 from app.models.root_cause import RootCauseAnalysis
-from app.models.repair import RepairProposal
+from app.models.repair import RepairProposal, RepairBackup, RepairAuditLog
 
 __all__ = [
     "Project",
@@ -13,4 +13,6 @@ __all__ = [
     "DetectionFinding",
     "RootCauseAnalysis",
     "RepairProposal",
+    "RepairBackup",
+    "RepairAuditLog",
 ]

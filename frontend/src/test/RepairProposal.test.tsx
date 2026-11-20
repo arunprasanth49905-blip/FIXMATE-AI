@@ -280,3 +280,279 @@ describe('DetectionPanel Phase 6 Integration', () => {
     });
   });
 });
+
+describe('Phase 7 Human Approval & Controlled Patch Application Engine', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders Approve and Reject buttons for a proposed patch', () => {
+    render(<RepairProposalCard proposal={mockProposal} projectId="proj-123" />);
+
+    expect(screen.getByTestId('approve-repair-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('reject-repair-btn')).toBeInTheDocument();
+  });
+
+  it('approves repair proposal and transitions to approved state', async () => {
+    vi.mocked(apiClient.approveRepair).mockResolvedValueOnce({
+      proposal_id: 'rep-001',
+      project_id: 'proj-123',
+      status: 'approved',
+      approved_at: '2026-11-20T10:00:00Z',
+      source_fingerprint: 'abc123sha256hash',
+      message: 'Repair proposal successfully approved.',
+    });
+
+    const handleUpdated = vi.fn();
+    render(
+      <RepairProposalCard
+        proposal={mockProposal}
+        projectId="proj-123"
+        onProposalUpdated={handleUpdated}
+      />
+    );
+
+    const approveBtn = screen.getByTestId('approve-repair-btn');
+    fireEvent.click(approveBtn);
+
+    expect(apiClient.approveRepair).toHaveBeenCalledWith('proj-123', 'rep-001');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('approved-status-banner')).toBeInTheDocument();
+      expect(screen.getByTestId('apply-repair-btn')).toBeInTheDocument();
+      expect(handleUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          approval_status: 'approved',
+          repair_status: 'approved',
+        })
+      );
+    });
+  });
+
+  it('rejects repair proposal and displays rejected status', async () => {
+    vi.mocked(apiClient.rejectRepair).mockResolvedValueOnce({
+      proposal_id: 'rep-001',
+      project_id: 'proj-123',
+      status: 'rejected',
+      rejected_at: '2026-11-20T10:00:00Z',
+      message: 'Repair proposal rejected.',
+    });
+
+    const handleUpdated = vi.fn();
+    render(
+      <RepairProposalCard
+        proposal={mockProposal}
+        projectId="proj-123"
+        onProposalUpdated={handleUpdated}
+      />
+    );
+
+    const rejectBtn = screen.getByTestId('reject-repair-btn');
+    fireEvent.click(rejectBtn);
+
+    expect(apiClient.rejectRepair).toHaveBeenCalledWith('proj-123', 'rep-001');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('rejected-status-banner')).toBeInTheDocument();
+      expect(handleUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          approval_status: 'rejected',
+          repair_status: 'rejected',
+        })
+      );
+    });
+  });
+
+  it('disables Approve button and shows warning if proposal is stale', () => {
+    render(<RepairProposalCard proposal={mockStaleProposal} projectId="proj-123" />);
+
+    const approveBtn = screen.getByTestId('approve-repair-btn');
+    expect(approveBtn).toBeDisabled();
+    expect(screen.getByTestId('stale-source-warning')).toBeInTheDocument();
+  });
+
+  it('opens confirmation modal and applies approved repair to disk', async () => {
+    const approvedProposal: RepairProposal = {
+      ...mockProposal,
+      approval_status: 'approved',
+      repair_status: 'approved',
+      approved_at: '2026-11-20T10:00:00Z',
+    };
+
+    vi.mocked(apiClient.applyRepair).mockResolvedValueOnce({
+      proposal_id: 'rep-001',
+      project_id: 'proj-123',
+      file_path: 'calculator.py',
+      status: 'applied',
+      applied_at: '2026-11-20T10:05:00Z',
+      backup_id: 'bak_20261120_calculator_py_001',
+      backup_path: '.fixmate/backups/calculator.py.bak_001',
+      pre_apply_fingerprint: 'abc123sha256hash',
+      post_apply_fingerprint: 'def456sha256hash',
+      syntax_validation_passed: true,
+      additions: 1,
+      deletions: 1,
+      message: 'Repair successfully applied to calculator.py',
+    });
+
+    const handleModified = vi.fn();
+    const handleUpdated = vi.fn();
+
+    render(
+      <RepairProposalCard
+        proposal={approvedProposal}
+        projectId="proj-123"
+        onFileModified={handleModified}
+        onProposalUpdated={handleUpdated}
+      />
+    );
+
+    // Click Apply Approved Repair button
+    const applyBtn = screen.getByTestId('apply-repair-btn');
+    fireEvent.click(applyBtn);
+
+    // Confirmation dialog should be displayed
+    expect(screen.getByTestId('apply-confirmation-dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Confirm Patch Application/i)).toBeInTheDocument();
+    expect(screen.getByText(/Automatic byte-for-byte pre-application backup/i)).toBeInTheDocument();
+
+    // Confirm application
+    const confirmBtn = screen.getByTestId('confirm-apply-btn');
+    fireEvent.click(confirmBtn);
+
+    expect(apiClient.applyRepair).toHaveBeenCalledWith('proj-123', 'rep-001', {
+      confirm_application: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('applied-status-banner')).toBeInTheDocument();
+      expect(screen.getAllByText(/bak_20261120_calculator_py_001/i).length).toBeGreaterThan(0);
+      expect(screen.getByTestId('rollback-repair-btn')).toBeInTheDocument();
+      expect(handleModified).toHaveBeenCalledWith('calculator.py');
+      expect(handleUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repair_status: 'applied',
+          backup_id: 'bak_20261120_calculator_py_001',
+        })
+      );
+    });
+  });
+
+  it('cancelling confirmation modal dismisses without applying', () => {
+    const approvedProposal: RepairProposal = {
+      ...mockProposal,
+      approval_status: 'approved',
+      repair_status: 'approved',
+    };
+
+    render(<RepairProposalCard proposal={approvedProposal} projectId="proj-123" />);
+
+    fireEvent.click(screen.getByTestId('apply-repair-btn'));
+    expect(screen.getByTestId('apply-confirmation-dialog')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('cancel-apply-modal-btn'));
+    expect(screen.queryByTestId('apply-confirmation-dialog')).not.toBeInTheDocument();
+    expect(apiClient.applyRepair).not.toHaveBeenCalled();
+  });
+
+  it('opens rollback modal and reverts applied patch to pre-apply backup', async () => {
+    const appliedProposal: RepairProposal = {
+      ...mockProposal,
+      approval_status: 'approved',
+      repair_status: 'applied',
+      applied_at: '2026-11-20T10:05:00Z',
+      backup_id: 'bak_20261120_calculator_py_001',
+      pre_apply_fingerprint: 'abc123sha256hash',
+      post_apply_fingerprint: 'def456sha256hash',
+    };
+
+    vi.mocked(apiClient.rollbackRepair).mockResolvedValueOnce({
+      proposal_id: 'rep-001',
+      project_id: 'proj-123',
+      file_path: 'calculator.py',
+      status: 'rolled_back',
+      rollback_at: '2026-11-20T10:10:00Z',
+      restored_fingerprint: 'abc123sha256hash',
+      message: 'Repair rolled back successfully.',
+    });
+
+    const handleModified = vi.fn();
+    const handleUpdated = vi.fn();
+
+    render(
+      <RepairProposalCard
+        proposal={appliedProposal}
+        projectId="proj-123"
+        onFileModified={handleModified}
+        onProposalUpdated={handleUpdated}
+      />
+    );
+
+    // Rollback button should be visible
+    const rollbackBtn = screen.getByTestId('rollback-repair-btn');
+    fireEvent.click(rollbackBtn);
+
+    // Confirmation dialog
+    expect(screen.getByTestId('rollback-confirmation-dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Confirm Repair Rollback/i)).toBeInTheDocument();
+
+    // Confirm rollback
+    const confirmRollbackBtn = screen.getByTestId('confirm-rollback-btn');
+    fireEvent.click(confirmRollbackBtn);
+
+    expect(apiClient.rollbackRepair).toHaveBeenCalledWith('proj-123', 'rep-001');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('rolled-back-status-banner')).toBeInTheDocument();
+      expect(handleModified).toHaveBeenCalledWith('calculator.py');
+      expect(handleUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repair_status: 'rolled_back',
+          rollback_status: 'rolled_back',
+        })
+      );
+    });
+  });
+
+  it('toggles and displays immutable audit trail', async () => {
+    vi.mocked(apiClient.getRepairAuditLog).mockResolvedValueOnce({
+      proposal_id: 'rep-001',
+      project_id: 'proj-123',
+      total_events: 2,
+      events: [
+        {
+          id: 'aud-1',
+          proposal_id: 'rep-001',
+          event_type: 'proposal_generated',
+          target_file: 'calculator.py',
+          source_fingerprint: 'abc123sha256hash',
+          details: { model: 'gemini-3.5-flash-lite' },
+          created_at: '2026-11-20T10:00:00Z',
+        },
+        {
+          id: 'aud-2',
+          proposal_id: 'rep-001',
+          event_type: 'proposal_approved',
+          target_file: 'calculator.py',
+          source_fingerprint: 'abc123sha256hash',
+          details: { approved_by: 'human_user' },
+          created_at: '2026-11-20T10:02:00Z',
+        },
+      ],
+    });
+
+    render(<RepairProposalCard proposal={mockProposal} projectId="proj-123" />);
+
+    const auditBtn = screen.getByTestId('toggle-audit-btn');
+    fireEvent.click(auditBtn);
+
+    expect(apiClient.getRepairAuditLog).toHaveBeenCalledWith('proj-123', 'rep-001');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('audit-trail-container')).toBeInTheDocument();
+      expect(screen.getByText(/proposal_generated/i)).toBeInTheDocument();
+      expect(screen.getByText(/proposal_approved/i)).toBeInTheDocument();
+    });
+  });
+});
+

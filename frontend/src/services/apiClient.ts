@@ -28,6 +28,12 @@ import {
   GenerateRepairRequest,
   RepairProposal,
   RepairHistoryResponse,
+  ApproveRepairResponse,
+  RejectRepairResponse,
+  ApplyRepairRequest,
+  ApplyRepairResponse,
+  RollbackRepairResponse,
+  ProposalAuditHistoryResponse,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -431,5 +437,35 @@ export const apiClient = {
     return request<{ deleted: boolean; proposal_id: string }>(`/projects/${projectId}/repair/${proposalId}`, {
       method: 'DELETE',
     });
+  },
+
+  // Phase 7 Human Approval & Controlled Patch Application APIs
+  approveRepair: (projectId: string, proposalId: string): Promise<ApproveRepairResponse> => {
+    return request<ApproveRepairResponse>(`/projects/${projectId}/repair/${proposalId}/approve`, {
+      method: 'POST',
+    });
+  },
+
+  rejectRepair: (projectId: string, proposalId: string): Promise<RejectRepairResponse> => {
+    return request<RejectRepairResponse>(`/projects/${projectId}/repair/${proposalId}/reject`, {
+      method: 'POST',
+    });
+  },
+
+  applyRepair: (projectId: string, proposalId: string, payload: ApplyRepairRequest): Promise<ApplyRepairResponse> => {
+    return request<ApplyRepairResponse>(`/projects/${projectId}/repair/${proposalId}/apply`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  rollbackRepair: (projectId: string, proposalId: string): Promise<RollbackRepairResponse> => {
+    return request<RollbackRepairResponse>(`/projects/${projectId}/repair/${proposalId}/rollback`, {
+      method: 'POST',
+    });
+  },
+
+  getRepairAuditLog: (projectId: string, proposalId: string): Promise<ProposalAuditHistoryResponse> => {
+    return request<ProposalAuditHistoryResponse>(`/projects/${projectId}/repair/${proposalId}/audit-log`);
   },
 };

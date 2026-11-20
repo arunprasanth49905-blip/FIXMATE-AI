@@ -461,6 +461,26 @@ export const WorkspacePage: React.FC = () => {
     setEditorTargetPosition({ line, column });
   };
 
+  // Phase 7: Reload workspace files and active editor content when a patch is applied or rolled back
+  const handleFileModified = async (filePath: string) => {
+    try {
+      const updatedFiles = await apiClient.getProjectFiles(projectId!, true) as FileTreeItem[];
+      setFiles(updatedFiles);
+
+      if (activeTab && (activeTab.path === filePath || activeTab.path.endsWith(filePath))) {
+        const fileRes = await apiClient.getFileContent(projectId!, activeTab.id);
+        const safeContent = fileRes.content ?? '';
+        setTabContents((prev) => ({ ...prev, [activeTab.id]: safeContent }));
+        setSavedContents((prev) => ({ ...prev, [activeTab.id]: safeContent }));
+        setOpenTabs((prev) =>
+          prev.map((t) => (t.id === activeTab.id ? { ...t, isDirty: false } : t))
+        );
+      }
+    } catch {
+      // Best-effort background refresh
+    }
+  };
+
   if (isLoadingProject) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: 'var(--color-navy-500)' }}>
@@ -738,6 +758,7 @@ export const WorkspacePage: React.FC = () => {
               onRunDetection={handleTriggerDetection}
               onClose={() => setIsDetectionPanelOpen(false)}
               onNavigateToSource={handleNavigateToSource}
+              onFileModified={handleFileModified}
             />
           </aside>
         )}

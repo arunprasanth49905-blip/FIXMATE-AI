@@ -8,6 +8,7 @@ FIXMATE AI is an advanced AI-powered software bug detection and autonomous code 
 - **Phase 4:** Deterministic Bug Detection Engine — Static, zero-execution rule engine with 20 deterministic rules across Python, JavaScript, and TypeScript, calibrated confidence scoring, code evidence extraction, actionable remediation, and Monaco Editor line/column deep navigation.
 - **Phase 5:** AI Root Cause Analysis Engine — Deep semantic investigation powered by Google Gemini (`google-genai` SDK) analyzing deterministic findings without executing code. Features dual-severity comparison (authoritative static vs AI assessed), calibrated confidence scoring (0-100), root cause breakdown, execution/state impact, failure consequences, conceptual guidance (strictly no code patches), secret redaction, and SQLite analysis history.
 - **Phase 6:** Intelligent Code Repair & Safe Patch Generation Engine — Safe patch synthesis powered by Google Gemini 3.5 Flash Lite (`gemini-3.5-flash-lite`). Produces in-memory unified diffs with line-level indentation preservation, SHA-256 source freshness fingerprinting, multi-layer deterministic validation (AST syntax parsing, patch reversibility, path confinement), and interactive review in Monaco without writing to disk files.
+- **Phase 7:** Human Approval & Controlled Patch Application Engine — The first phase authorized to safely modify source files on disk. Strictly governed by explicit human approval (`/approve`) and confirmation dialogs (`confirm_application=True`). Features byte-for-byte pre-application backups in `.fixmate/backups/`, atomic temporary file swaps (`.tmp` + `os.replace`), post-write AST syntax verification with immediate failure recovery, conflict-guarded rollback (`/rollback`), and immutable audit logging (`repair_audit_logs`).
 
 ---
 
@@ -101,18 +102,20 @@ FIXMATE AI/
 │   │       │   ├── root_cause_prompt_builder.py # Delimiter safety, anti-injection, schema prompt
 │   │       │   ├── root_cause_engine.py    # Gemini client, structured JSON parser, calibrated confidence
 │   │       │   └── root_cause_service.py   # Business logic, SQLite CRUD, dual severity comparison
-│   │       └── repair/                 # Phase 6 Safe Patch Generation Engine
+│   │       └── repair/                 # Phase 6 & 7 Code Repair & Controlled Patch Application
 │   │           ├── repair_context.py       # Source SHA-256 fingerprinting, evidence slice, redaction
 │   │           ├── repair_prompt_builder.py# 18 AI instructions, anti-injection, JSON schema
 │   │           ├── repair_engine.py        # Gemini 3.5 Flash Lite synthesis & transient 503 retry
 │   │           ├── patch_generator.py      # Unified diff construction & indentation preservation
 │   │           ├── patch_validator.py      # Freshness, path security, reversibility, AST syntax
+│   │           ├── patch_application_service.py # Phase 7 atomic apply, backup, rollback, audit trail
 │   │           └── repair_service.py       # Orchestrator, SQLite persistence, staleness check
 │   ├── data/                           # Local SQLite database & isolated workspaces (gitignored)
 │   │   ├── fixmate.db
 │   │   └── workspaces/{project_id}/...
-│   ├── tests/                          # 100 Pytest unit and integration tests (100% pass)
+│   ├── tests/                          # 118 Pytest unit and integration tests (100% pass)
 │   │   ├── test_repair.py              # Phase 6 comprehensive patch engine test suite
+│   │   └── test_patch_application.py   # Phase 7 approval, controlled write, rollback, audit tests
 │   ├── requirements.txt                # tree-sitter, tree-sitter-javascript, tree-sitter-typescript
 │   └── .env.example
 ├── frontend/
@@ -126,9 +129,9 @@ FIXMATE AI/
 │   │   │   ├── analysis/               # AnalysisPanel, AnalysisSummaryCard, StructuralViewer
 │   │   │   ├── detection/              # DetectionPanel, RulesModal
 │   │   │   ├── root_cause/             # RootCauseAnalysisCard, RootCauseHistoryModal
-│   │   │   └── repair/                 # Phase 6 RepairProposalCard, RepairHistoryModal
-│   │   ├── test/                       # 48 Vitest frontend tests (100% pass)
-│   │   │   └── RepairProposal.test.tsx # Phase 6 UI and workflow unit tests
+│   │   │   └── repair/                 # Phase 6 & 7 RepairProposalCard, RepairHistoryModal
+│   │   ├── test/                       # 56 Vitest frontend tests (100% pass)
+│   │   │   └── RepairProposal.test.tsx # Phase 6 & 7 UI, approval, apply, rollback, audit tests
 │   │   │   ├── detection/              # DetectionPanel (Findings list, filters, Monaco jump)
 │   │   │   └── root_cause/             # RootCauseAnalysisCard, RootCauseHistoryModal
 │   │   ├── pages/                      # DashboardPage, ProjectsPage, WorkspacePage, NewAnalysisPage

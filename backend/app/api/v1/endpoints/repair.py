@@ -7,11 +7,19 @@ from app.schemas.repair import (
     GenerateRepairRequest,
     RepairHistoryResponse,
     RepairProposalResponse,
+    ApproveRepairResponse,
+    RejectRepairResponse,
+    ApplyRepairRequest,
+    ApplyRepairResponse,
+    RollbackRepairResponse,
+    ProposalAuditHistoryResponse,
 )
 from app.services.repair.repair_service import RepairService
+from app.services.repair.patch_application_service import PatchApplicationService
 
 router = APIRouter()
 repair_service = RepairService()
+patch_application_service = PatchApplicationService()
 
 
 @router.post(
@@ -111,3 +119,118 @@ def delete_repair_proposal(
         db=db,
     )
     return {"deleted": success, "proposal_id": proposal_id}
+
+
+# =========================================================================
+# Phase 7: Human Approval, Controlled Patch Application & Rollback Endpoints
+# =========================================================================
+
+@router.post(
+    "/projects/{project_id}/repair/{proposal_id}/approve",
+    response_model=ApproveRepairResponse,
+    tags=["Code Repair - Human Approval"],
+    summary="Explicitly approve a repair proposal for application",
+)
+def approve_repair_proposal(
+    project_id: str,
+    proposal_id: str,
+    db: Session = Depends(get_db),
+) -> ApproveRepairResponse:
+    """
+    Validates preflight constraints (source freshness, patch reversibility, workspace bounds)
+    and transitions the proposal to 'approved' state.
+    """
+    return patch_application_service.approve_proposal(
+        project_id=project_id,
+        proposal_id=proposal_id,
+        db=db,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/repair/{proposal_id}/reject",
+    response_model=RejectRepairResponse,
+    tags=["Code Repair - Human Approval"],
+    summary="Explicitly reject a repair proposal",
+)
+def reject_repair_proposal(
+    project_id: str,
+    proposal_id: str,
+    db: Session = Depends(get_db),
+) -> RejectRepairResponse:
+    """
+    Rejects the proposal and permanently prevents it from being applied.
+    """
+    return patch_application_service.reject_proposal(
+        project_id=project_id,
+        proposal_id=proposal_id,
+        db=db,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/repair/{proposal_id}/apply",
+    response_model=ApplyRepairResponse,
+    tags=["Code Repair - Patch Application"],
+    summary="Atomically apply an approved repair patch to disk source",
+)
+def apply_repair_patch(
+    project_id: str,
+    proposal_id: str,
+    payload: ApplyRepairRequest = ApplyRepairRequest(confirm_application=True),
+    db: Session = Depends(get_db),
+) -> ApplyRepairResponse:
+    """
+    Controlled Patch Application:
+    1. Preflight validation & fresh source SHA-256 matching.
+    2. Byte-for-byte backup in project `.fixmate/backups/`.
+    3. Atomic temporary-file write + replace.
+    4. Post-write concrete AST syntax validation.
+    5. Automatic failure recovery if post-write verification fails.
+    """
+    return patch_application_service.apply_patch(
+        project_id=project_id,
+        proposal_id=proposal_id,
+        request=payload,
+        db=db,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/repair/{proposal_id}/rollback",
+    response_model=RollbackRepairResponse,
+    tags=["Code Repair - Rollback"],
+    summary="Revert an applied repair patch to the pre-application original source",
+)
+def rollback_repair_patch(
+    project_id: str,
+    proposal_id: str,
+    db: Session = Depends(get_db),
+) -> RollbackRepairResponse:
+    """
+    Rolls back an applied repair patch by restoring the exact original backup.
+    Guarantees that if the file has been modified since application, rollback is blocked.
+    """
+    return patch_application_service.rollback_patch(
+        project_id=project_id,
+        proposal_id=proposal_id,
+        db=db,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/repair/{proposal_id}/audit-log",
+    response_model=ProposalAuditHistoryResponse,
+    tags=["Code Repair - Audit History"],
+    summary="Retrieve full immutable audit log for a proposal",
+)
+def get_repair_audit_log(
+    project_id: str,
+    proposal_id: str,
+    db: Session = Depends(get_db),
+) -> ProposalAuditHistoryResponse:
+    return patch_application_service.get_audit_history(
+        project_id=project_id,
+        proposal_id=proposal_id,
+        db=db,
+    )

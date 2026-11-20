@@ -19,10 +19,11 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     try:
         with engine.begin() as conn:
+            # Phase 5 schema migration check
             cursor = conn.execute(text("PRAGMA table_info(root_cause_analyses)"))
-            existing_cols = {row[1] for row in cursor.fetchall()}
-            if existing_cols:  # table exists
-                new_cols = [
+            existing_rca_cols = {row[1] for row in cursor.fetchall()}
+            if existing_rca_cols:
+                rca_cols = [
                     ("original_code", "TEXT DEFAULT ''"),
                     ("simple_explanation", "TEXT DEFAULT ''"),
                     ("corrected_code", "TEXT DEFAULT ''"),
@@ -30,9 +31,32 @@ async def lifespan(app: FastAPI):
                     ("assumptions_json", "TEXT DEFAULT '[]'"),
                     ("fix_status", "VARCHAR(32) DEFAULT 'suggested_not_applied'"),
                 ]
-                for col_name, col_def in new_cols:
-                    if col_name not in existing_cols:
+                for col_name, col_def in rca_cols:
+                    if col_name not in existing_rca_cols:
                         conn.execute(text(f"ALTER TABLE root_cause_analyses ADD COLUMN {col_name} {col_def}"))
+
+            # Phase 7 schema migration check for repair_proposals
+            cursor_repair = conn.execute(text("PRAGMA table_info(repair_proposals)"))
+            existing_repair_cols = {row[1] for row in cursor_repair.fetchall()}
+            if existing_repair_cols:
+                repair_cols = [
+                    ("approval_status", "VARCHAR(32) DEFAULT 'pending'"),
+                    ("approved_at", "DATETIME"),
+                    ("rejected_at", "DATETIME"),
+                    ("applied_at", "DATETIME"),
+                    ("rollback_at", "DATETIME"),
+                    ("rollback_status", "VARCHAR(32)"),
+                    ("backup_id", "VARCHAR(36)"),
+                    ("backup_path", "VARCHAR(512)"),
+                    ("pre_apply_fingerprint", "VARCHAR(64)"),
+                    ("post_apply_fingerprint", "VARCHAR(64)"),
+                    ("apply_attempt_id", "VARCHAR(36)"),
+                    ("apply_error", "TEXT"),
+                    ("post_validation_details_json", "TEXT"),
+                ]
+                for col_name, col_def in repair_cols:
+                    if col_name not in existing_repair_cols:
+                        conn.execute(text(f"ALTER TABLE repair_proposals ADD COLUMN {col_name} {col_def}"))
     except Exception as e:
         logger.warning(f"Schema migration check notice: {e}")
 

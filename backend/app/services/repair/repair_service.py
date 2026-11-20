@@ -1,11 +1,12 @@
 import json
+from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.core.logging import logger
-from app.models.repair import RepairProposal
+from app.models.repair import RepairProposal, RepairAuditLog
 from app.schemas.repair import (
     PatchValidationDetails,
     RepairHistoryResponse,
@@ -74,6 +75,11 @@ class RepairService:
             validation_errors=validation_data.get("validation_errors", []),
         )
 
+        # Determine effective repair status: if source is stale and status is proposed/approved/generated, show stale
+        effective_status = record.repair_status
+        if is_stale and effective_status in ("proposed", "generated", "approved"):
+            effective_status = "stale"
+
         return RepairProposalResponse(
             id=record.id,
             project_id=record.project_id,
@@ -87,7 +93,7 @@ class RepairService:
             end_line=record.end_line,
             source_fingerprint=record.source_fingerprint,
             is_stale=is_stale,
-            repair_status=record.repair_status,
+            repair_status=effective_status,
             repair_summary=record.repair_summary,
             repair_explanation=record.repair_explanation,
             original_code=record.original_code,
@@ -99,6 +105,18 @@ class RepairService:
             confidence_score=record.confidence_score,
             validation_status=record.validation_status,
             validation_details=validation_details,
+            approval_status=record.approval_status or "pending",
+            approved_at=record.approved_at.isoformat() if getattr(record, "approved_at", None) else None,
+            rejected_at=record.rejected_at.isoformat() if getattr(record, "rejected_at", None) else None,
+            applied_at=record.applied_at.isoformat() if getattr(record, "applied_at", None) else None,
+            rollback_at=record.rollback_at.isoformat() if getattr(record, "rollback_at", None) else None,
+            rollback_status=getattr(record, "rollback_status", None),
+            backup_id=getattr(record, "backup_id", None),
+            backup_path=getattr(record, "backup_path", None),
+            pre_apply_fingerprint=getattr(record, "pre_apply_fingerprint", None),
+            post_apply_fingerprint=getattr(record, "post_apply_fingerprint", None),
+            apply_attempt_id=getattr(record, "apply_attempt_id", None),
+            apply_error=getattr(record, "apply_error", None),
             model=record.model,
             duration_ms=record.duration_ms,
             created_at=record.created_at.isoformat() if record.created_at else "",
@@ -229,6 +247,24 @@ class RepairService:
             error_message="; ".join(validation.validation_errors) if validation.validation_errors else None,
         )
         db.add(record)
+        db.flush()
+
+        audit_entry = RepairAuditLog(
+            project_id=project_id,
+            proposal_id=record.id,
+            event_type="proposal_generated",
+            target_file=context.file_path,
+            source_fingerprint=context.source_fingerprint,
+            details_json=json.dumps({
+                "rule_id": context.rule_id,
+                "status": repair_status,
+                "confidence": llm_payload.confidence,
+                "additions": patch_artifact.additions,
+                "deletions": patch_artifact.deletions,
+            }),
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(audit_entry)
         db.commit()
         db.refresh(record)
 

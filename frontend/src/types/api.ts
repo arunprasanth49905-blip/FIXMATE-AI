@@ -497,7 +497,8 @@ export interface RepairProposal {
   source_fingerprint: string;
   is_stale: boolean;
 
-  repair_status: 'generated' | 'needs_clarification' | 'rejected_by_validation' | 'stale_source' | 'generation_failed' | string;
+  // Lifecycle states: proposed, approved, rejected, applying, applied, failed, rolled_back, stale
+  repair_status: 'proposed' | 'approved' | 'rejected' | 'applying' | 'applied' | 'failed' | 'rolled_back' | 'stale' | 'generated' | 'stale_source' | string;
   repair_summary: string;
   repair_explanation: string;
   original_code: string;
@@ -513,6 +514,21 @@ export interface RepairProposal {
   validation_status: 'passed' | 'failed' | 'warning' | string;
   validation_details: PatchValidationDetails;
 
+  // Phase 7: Approval & Application metadata
+  approval_status?: 'pending' | 'approved' | 'rejected' | string;
+  approved_at?: string | null;
+  rejected_at?: string | null;
+  applied_at?: string | null;
+  rollback_at?: string | null;
+  rollback_status?: string | null;
+
+  backup_id?: string | null;
+  backup_path?: string | null;
+  pre_apply_fingerprint?: string | null;
+  post_apply_fingerprint?: string | null;
+  apply_attempt_id?: string | null;
+  apply_error?: string | null;
+
   model: string;
   duration_ms: number;
   created_at: string;
@@ -523,5 +539,73 @@ export interface RepairHistoryResponse {
   project_id: string;
   total: number;
   proposals: RepairProposal[];
+}
+
+export interface ApproveRepairResponse {
+  proposal_id: string;
+  project_id: string;
+  status: string;
+  approved_at: string;
+  source_fingerprint: string;
+  message: string;
+}
+
+export interface RejectRepairResponse {
+  proposal_id: string;
+  project_id: string;
+  status: string;
+  rejected_at: string;
+  message: string;
+}
+
+export interface ApplyRepairRequest {
+  confirm_application: boolean;
+  comment?: string;
+}
+
+export interface ApplyRepairResponse {
+  proposal_id: string;
+  project_id: string;
+  file_path: string;
+  status: 'applied' | 'failed' | string;
+  applied_at?: string | null;
+  backup_id?: string | null;
+  backup_path?: string | null;
+  pre_apply_fingerprint: string;
+  post_apply_fingerprint?: string | null;
+  syntax_validation_passed: boolean;
+  additions: number;
+  deletions: number;
+  message: string;
+  error?: string | null;
+  recovery_attempted?: boolean;
+  recovery_succeeded?: boolean;
+}
+
+export interface RollbackRepairResponse {
+  proposal_id: string;
+  project_id: string;
+  file_path: string;
+  status: 'rolled_back' | string;
+  rollback_at: string;
+  restored_fingerprint: string;
+  message: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  proposal_id: string;
+  event_type: string;
+  target_file: string;
+  source_fingerprint?: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ProposalAuditHistoryResponse {
+  proposal_id: string;
+  project_id: string;
+  total_events: number;
+  events: AuditLogEntry[];
 }
 

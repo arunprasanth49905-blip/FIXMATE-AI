@@ -34,6 +34,7 @@ interface DetectionPanelProps {
   onRunDetection: () => void;
   onClose: () => void;
   onNavigateToSource: (filePath: string, line: number, column: number) => void;
+  onFileModified?: (filePath: string) => void;
 }
 
 export const DetectionPanel: React.FC<DetectionPanelProps> = ({
@@ -43,6 +44,7 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
   onRunDetection,
   onClose,
   onNavigateToSource,
+  onFileModified,
 }) => {
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
@@ -735,11 +737,12 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                           </div>
                         )}
 
-                        {/* Phase 6 Render Safe Repair Proposal Card */}
+                        {/* Phase 6 & Phase 7 Render Safe Repair Proposal Card */}
                         {repair && (
                           <div style={{ marginTop: '8px' }}>
                             <RepairProposalCard
                               proposal={repair}
+                              projectId={projectId}
                               onClose={() =>
                                 setRepairsMap((prev) => {
                                   const copy = { ...prev };
@@ -751,6 +754,10 @@ export const DetectionPanel: React.FC<DetectionPanelProps> = ({
                               onRegenerate={() => handleGenerateRepair(finding.id)}
                               onOpenHistory={() => setIsRepairHistoryModalOpen(true)}
                               isRegenerating={isGeneratingRepair}
+                              onProposalUpdated={(updated) =>
+                                setRepairsMap((prev) => ({ ...prev, [finding.id]: updated }))
+                              }
+                              onFileModified={onFileModified}
                             />
                           </div>
                         )}

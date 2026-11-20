@@ -18,8 +18,9 @@ file_service = FileService()
 
 
 def compute_source_fingerprint(source_code: str) -> str:
-    """Computes a SHA-256 fingerprint of the source text."""
-    return hashlib.sha256(source_code.encode("utf-8")).hexdigest()
+    """Computes a SHA-256 fingerprint of the source text with normalized newlines."""
+    normalized = source_code.replace("\r\n", "\n")
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 @dataclass
