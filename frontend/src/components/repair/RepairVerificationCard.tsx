@@ -4,13 +4,21 @@ import {
   XCircle,
   AlertTriangle,
   HelpCircle,
+  Clock,
   ShieldCheck,
+  ChevronDown,
+  ChevronUp,
   History,
+  FileCode,
+  Bug,
   RefreshCw,
+  Info,
+  Check,
+  X,
   Loader2,
 } from 'lucide-react';
-import { VerificationReportResponse } from '../../types/api';
-import { apiClient } from '../../services/apiClient';
+import { VerificationReportResponse, VerificationCheck, FindingComparisonItem } from '../../types/api';
+import { apiClient, parseErrorMessage } from '../../services/apiClient';
 
 interface RepairVerificationCardProps {
   report: VerificationReportResponse;
@@ -31,6 +39,7 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const [historyList, setHistoryList] = useState<VerificationReportResponse[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
 
   React.useEffect(() => {
     setReport(initialReport);
@@ -235,11 +244,10 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
           ) : historyList.length === 0 ? (
             <div style={{ fontStyle: 'italic', color: '#64748b' }}>No previous verification runs.</div>
           ) : (
-            <div data-testid="verification-history-list" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {historyList.map((item, idx) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {historyList.map((item) => (
                 <div
-                  key={item.id || idx}
-                  data-testid="verification-history-item"
+                  key={item.id}
                   onClick={() => setReport(item)}
                   style={{
                     display: 'flex',
@@ -253,10 +261,10 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontWeight: 700, textTransform: 'uppercase', color: item.overall_status === 'verified' ? '#86efac' : '#fca5a5' }}>
-                      Run #{historyList.length - idx} • {item.overall_status}
+                      {item.overall_status}
                     </span>
                     <span style={{ color: '#94a3b8' }}>
-                      Target: {item.target_bug_status} • Regressions: {item.comparison?.regression_count ?? (item as any).regression_count ?? 0}
+                      Target: {item.target_bug_status} • Regressions: {item.comparison.regression_count}
                     </span>
                   </div>
                   <span style={{ color: '#64748b', fontSize: '10.5px' }}>
@@ -274,264 +282,234 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
          ========================================================================= */}
       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {/* Metric Cards Grid */}
-        {(() => {
-          const comp = report.comparison;
-          const beforeCount = comp?.before_count ?? 0;
-          const afterCount = comp?.after_count ?? 0;
-          const resolvedCount = comp?.resolved_count ?? 0;
-          const regressionCount = comp?.regression_count ?? 0;
-          const newFindings = comp?.new_findings ?? [];
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+            gap: '10px',
+          }}
+        >
+          <div
+            style={{
+              padding: '10px 12px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Before Bugs</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
+              {report.comparison.before_count}
+            </div>
+          </div>
 
-          return (
-            <>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                  gap: '10px',
-                }}
-              >
+          <div
+            style={{
+              padding: '10px 12px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>After Bugs</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
+              {report.comparison.after_count}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: '10px 12px',
+              backgroundColor: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '8px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '11px', color: '#047857', fontWeight: 600 }}>Resolved</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: '#065f46' }}>
+              {report.comparison.resolved_count}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: '10px 12px',
+              backgroundColor: report.comparison.regression_count > 0 ? '#fef2f2' : '#f8fafc',
+              border: report.comparison.regression_count > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0',
+              borderRadius: '8px',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '11px', color: report.comparison.regression_count > 0 ? '#b91c1c' : '#64748b', fontWeight: 600 }}>
+              Regressions
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: report.comparison.regression_count > 0 ? '#dc2626' : '#16a34a' }}>
+              {report.comparison.regression_count}
+            </div>
+          </div>
+        </div>
+
+        {/* Check Results Checklist */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+          <div
+            style={{
+              padding: '8px 14px',
+              backgroundColor: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              color: '#334155',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Deterministic Static Checks ({report.checks.length})
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {report.checks.map((check, idx) => {
+              const isPass = check.status === 'passed';
+              const isFail = check.status === 'failed';
+              const isWarn = check.status === 'warning';
+              const isSkip = check.status === 'skipped';
+
+              return (
                 <div
+                  key={idx}
                   style={{
-                    padding: '10px 12px',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    textAlign: 'center',
+                    padding: '10px 14px',
+                    borderBottom: idx < report.checks.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    backgroundColor: isFail ? '#fff5f5' : isWarn ? '#fffbeb' : '#ffffff',
                   }}
                 >
-                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Before Bugs</div>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
-                    {beforeCount}
-                  </div>
-                </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
+                    {isPass ? (
+                      <CheckCircle2 size={15} style={{ color: '#16a34a', flexShrink: 0, marginTop: '2px' }} />
+                    ) : isFail ? (
+                      <XCircle size={15} style={{ color: '#dc2626', flexShrink: 0, marginTop: '2px' }} />
+                    ) : isWarn ? (
+                      <AlertTriangle size={15} style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
+                    ) : (
+                      <HelpCircle size={15} style={{ color: '#64748b', flexShrink: 0, marginTop: '2px' }} />
+                    )}
 
-                <div
-                  style={{
-                    padding: '10px 12px',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>After Bugs</div>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
-                    {afterCount}
-                  </div>
-                </div>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>
+                        {check.name.replace(/_/g, ' ').toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: '#475569', marginTop: '2px' }}>
+                        {check.message}
+                      </div>
 
-                <div
-                  style={{
-                    padding: '10px 12px',
-                    backgroundColor: '#ecfdf5',
-                    border: '1px solid #a7f3d0',
-                    borderRadius: '8px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ fontSize: '11px', color: '#047857', fontWeight: 600 }}>Resolved</div>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#065f46' }}>
-                    {resolvedCount}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    padding: '10px 12px',
-                    backgroundColor: regressionCount > 0 ? '#fef2f2' : '#f8fafc',
-                    border: regressionCount > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ fontSize: '11px', color: regressionCount > 0 ? '#b91c1c' : '#64748b', fontWeight: 600 }}>
-                    Regressions
-                  </div>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: regressionCount > 0 ? '#dc2626' : '#16a34a' }}>
-                    {regressionCount}
-                  </div>
-                </div>
-              </div>
-
-              {/* Check Results Checklist */}
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
-                <div
-                  style={{
-                    padding: '8px 14px',
-                    backgroundColor: '#f8fafc',
-                    borderBottom: '1px solid #e2e8f0',
-                    fontSize: '11.5px',
-                    fontWeight: 700,
-                    color: '#334155',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  Deterministic Static Checks ({report.checks.length})
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {report.checks.map((check, idx) => {
-                    const isPass = check.status === 'passed';
-                    const isFail = check.status === 'failed';
-                    const isWarn = check.status === 'warning';
-
-                    return (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: '10px 14px',
-                          borderBottom: idx < report.checks.length - 1 ? '1px solid #f1f5f9' : 'none',
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                          backgroundColor: isFail ? '#fff5f5' : isWarn ? '#fffbeb' : '#ffffff',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
-                          {isPass ? (
-                            <CheckCircle2 size={15} style={{ color: '#16a34a', flexShrink: 0, marginTop: '2px' }} />
-                          ) : isFail ? (
-                            <XCircle size={15} style={{ color: '#dc2626', flexShrink: 0, marginTop: '2px' }} />
-                          ) : isWarn ? (
-                            <AlertTriangle size={15} style={{ color: '#d97706', flexShrink: 0, marginTop: '2px' }} />
-                          ) : (
-                            <HelpCircle size={15} style={{ color: '#64748b', flexShrink: 0, marginTop: '2px' }} />
-                          )}
-                          <div>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#1e293b' }}>
-                              {check.name
-                                .split('_')
-                                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                                .join(' ')}
-                            </div>
-                            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                              {check.message}
-                            </div>
-                            {check.details && (
-                              <div
-                                style={{
-                                  marginTop: '6px',
-                                  padding: '6px 10px',
-                                  backgroundColor: 'rgba(0,0,0,0.04)',
-                                  borderRadius: '4px',
-                                  fontFamily: 'var(--font-mono, monospace)',
-                                  fontSize: '11px',
-                                  color: '#334155',
-                                  whiteSpace: 'pre-wrap',
-                                }}
-                              >
-                                {check.details}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <span
+                      {check.details && (
+                        <div
                           style={{
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            letterSpacing: '0.04em',
-                            textTransform: 'uppercase',
-                            padding: '2px 8px',
+                            marginTop: '6px',
+                            padding: '6px 10px',
+                            backgroundColor: 'rgba(0,0,0,0.04)',
                             borderRadius: '4px',
-                            backgroundColor: isPass ? '#ecfdf5' : isFail ? '#fef2f2' : isWarn ? '#fefce8' : '#f1f5f9',
-                            color: isPass ? '#047857' : isFail ? '#b91c1c' : isWarn ? '#a16207' : '#475569',
-                            border: isPass ? '1px solid #a7f3d0' : isFail ? '1px solid #fecaca' : isWarn ? '1px solid #fef08a' : '1px solid #e2e8f0',
-                            flexShrink: 0,
+                            fontFamily: 'var(--font-mono, monospace)',
+                            fontSize: '11px',
+                            color: '#334155',
+                            whiteSpace: 'pre-wrap',
                           }}
                         >
-                          {check.status}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                          {check.details}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-              {/* =========================================================================
-                  REGRESSION FINDINGS LIST (If new bugs introduced)
-                 ========================================================================= */}
-              {newFindings.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      textTransform: 'uppercase',
+                      backgroundColor: isPass ? '#ecfdf5' : isFail ? '#fef2f2' : isWarn ? '#fffbeb' : '#f1f5f9',
+                      color: isPass ? '#059669' : isFail ? '#dc2626' : isWarn ? '#b45309' : '#64748b',
+                      border: `1px solid ${isPass ? '#a7f3d0' : isFail ? '#fecaca' : isWarn ? '#fde68a' : '#cbd5e1'}`,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {check.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* =========================================================================
+            REGRESSION FINDINGS LIST (If new bugs introduced)
+           ========================================================================= */}
+        {report.comparison.new_findings && report.comparison.new_findings.length > 0 && (
+          <div
+            data-testid="regression-findings-box"
+            style={{
+              padding: '12px 14px',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#991b1b', fontWeight: 700, fontSize: '12px', marginBottom: '8px' }}>
+              <AlertTriangle size={15} style={{ color: '#dc2626' }} />
+              <span>REGRESSIONS DETECTED ({report.comparison.new_findings.length})</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {report.comparison.new_findings.map((f, idx) => (
                 <div
-                  data-testid="regression-findings-box"
+                  key={idx}
                   style={{
-                    padding: '12px 14px',
-                    backgroundColor: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #fca5a5',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#991b1b', fontWeight: 700, fontSize: '12px', marginBottom: '8px' }}>
-                    <AlertTriangle size={15} style={{ color: '#dc2626' }} />
-                    <span>REGRESSIONS DETECTED ({newFindings.length})</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#dc2626', backgroundColor: '#fee2e2', padding: '1px 5px', borderRadius: '3px' }}>
+                        {f.rule_id}
+                      </span>
+                      <strong style={{ color: '#1e293b' }}>{f.rule_name}</strong>
+                    </div>
+                    <span style={{ fontSize: '10.5px', color: '#64748b' }}>Line {f.start_line}</span>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {newFindings.map((f, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: '8px 10px',
-                          backgroundColor: '#ffffff',
-                          border: '1px solid #fca5a5',
-                          borderRadius: '6px',
-                          fontSize: '11.5px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <span
-                            style={{
-                              fontFamily: 'var(--font-mono, monospace)',
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              backgroundColor: '#fee2e2',
-                              color: '#991b1b',
-                              padding: '2px 6px',
-                              borderRadius: '3px',
-                            }}
-                          >
-                            {f.rule_id}
-                          </span>
-                          <span style={{ fontWeight: 600, color: '#1e293b' }}>{f.rule_name}</span>
-                          <span
-                            style={{
-                              fontSize: '10px',
-                              textTransform: 'uppercase',
-                              fontWeight: 700,
-                              color: f.severity === 'critical' ? '#dc2626' : f.severity === 'high' ? '#ea580c' : '#d97706',
-                            }}
-                          >
-                            {f.severity}
-                          </span>
-                          <span style={{ color: '#64748b', fontSize: '10.5px' }}>Line {f.start_line}</span>
-                        </div>
-                        <div style={{ color: '#475569', fontSize: '11px', marginBottom: '4px' }}>{f.message}</div>
-                        {f.evidence && (
-                          <div
-                            style={{
-                              fontFamily: 'var(--font-mono, monospace)',
-                              fontSize: '10.5px',
-                              backgroundColor: '#f8fafc',
-                              padding: '4px 8px',
-                              borderRadius: '4px',
-                              color: '#0f172a',
-                              border: '1px solid #e2e8f0',
-                            }}
-                          >
-                            {f.evidence}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <div style={{ color: '#475569', marginBottom: '4px' }}>{f.message}</div>
+
+                  {f.evidence && (
+                    <pre
+                      style={{
+                        margin: 0,
+                        padding: '4px 8px',
+                        backgroundColor: '#0f172a',
+                        color: '#f8fafc',
+                        borderRadius: '4px',
+                        fontSize: '10.5px',
+                        fontFamily: 'var(--font-mono, monospace)',
+                      }}
+                    >
+                      {f.evidence}
+                    </pre>
+                  )}
                 </div>
-              )}
-            </>
-          );
-        })()}
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Footer Notice */}
         <div
@@ -558,3 +536,4 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
     </div>
   );
 };
+
