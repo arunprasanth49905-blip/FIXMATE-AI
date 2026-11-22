@@ -16,6 +16,7 @@ import { Project } from '../types/api';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
+import { isProjectNameDuplicate } from '../utils/projectUtils';
 
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -73,6 +74,25 @@ export const ProjectsPage: React.FC = () => {
     });
   }, [projects, sortBy]);
 
+  // Validation helpers
+  const createNameError = useMemo(() => {
+    const trimmed = projectName.trim();
+    if (!trimmed) return null;
+    if (isProjectNameDuplicate(trimmed, projects)) {
+      return 'Project name already exists. Choose a different project name.';
+    }
+    return null;
+  }, [projectName, projects]);
+
+  const renameNameError = useMemo(() => {
+    const trimmed = projectName.trim();
+    if (!trimmed || !selectedProject) return null;
+    if (isProjectNameDuplicate(trimmed, projects, selectedProject.id)) {
+      return 'Project name already exists. Choose a different project name.';
+    }
+    return null;
+  }, [projectName, projects, selectedProject]);
+
   // Open Create Modal
   const openCreateModal = () => {
     setProjectName('');
@@ -84,15 +104,21 @@ export const ProjectsPage: React.FC = () => {
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!projectName.trim()) {
-      setFormError('Project name is required');
+    const trimmed = projectName.trim();
+    if (!trimmed) {
+      setFormError('Project name cannot be empty or only whitespace');
       return;
     }
+    if (isProjectNameDuplicate(trimmed, projects)) {
+      setFormError('Project name already exists. Choose a different project name.');
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
     try {
       const newProj = await apiClient.createProject({
-        name: projectName.trim(),
+        name: trimmed,
         description: projectDesc.trim() || undefined,
         language: projectLanguage,
       });
@@ -100,7 +126,7 @@ export const ProjectsPage: React.FC = () => {
       // Navigate straight into the new workspace
       navigate(`/projects/${newProj.id}`);
     } catch (err: unknown) {
-      const msg = parseErrorMessage(err, 'Failed to create project. Please try again.');
+      const msg = parseErrorMessage(err, 'Project name already exists. Choose a different project name.');
       setFormError(msg);
     } finally {
       setIsSubmitting(false);
@@ -119,12 +145,22 @@ export const ProjectsPage: React.FC = () => {
 
   const handleRenameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProject || !projectName.trim()) return;
+    if (!selectedProject) return;
+    const trimmed = projectName.trim();
+    if (!trimmed) {
+      setFormError('Project name cannot be empty or only whitespace');
+      return;
+    }
+    if (isProjectNameDuplicate(trimmed, projects, selectedProject.id)) {
+      setFormError('Project name already exists. Choose a different project name.');
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
     try {
       const updated = await apiClient.updateProject(selectedProject.id, {
-        name: projectName.trim(),
+        name: trimmed,
         description: projectDesc.trim() || undefined,
       });
       setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
@@ -261,9 +297,31 @@ export const ProjectsPage: React.FC = () => {
               <div>
                 <div className="project-card-header">
                   <h3 className="project-name">{project.name}</h3>
-                  <Badge variant={project.language === 'python' ? 'blue' : 'success'}>
-                    {project.language.toUpperCase()}
-                  </Badge>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {project.is_duplicate && (
+                      <span
+                        data-testid={`duplicate-warning-${project.id}`}
+                        title="Multiple existing projects share this name. All remain fully accessible."
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '10.5px',
+                          fontWeight: 600,
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e',
+                          border: '1px solid #fcd34d',
+                        }}
+                      >
+                        Duplicate Name
+                      </span>
+                    )}
+                    <Badge variant={project.language === 'python' ? 'blue' : 'success'}>
+                      {project.language.toUpperCase()}
+                    </Badge>
+                  </div>
                 </div>
 
                 <p className="project-desc">
@@ -327,7 +385,10 @@ export const ProjectsPage: React.FC = () => {
       >
         <form onSubmit={handleCreateSubmit}>
           {formError && (
-            <div style={{ padding: '10px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '13px', marginBottom: '14px' }}>
+            <div
+              data-testid="create-project-error-banner"
+              style={{ padding: '10px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '13px', marginBottom: '14px' }}
+            >
               {formError}
             </div>
           )}
@@ -336,13 +397,25 @@ export const ProjectsPage: React.FC = () => {
             <label className="form-label">Project Name *</label>
             <input
               type="text"
+              data-testid="create-project-name-input"
               className="form-input"
               placeholder="e.g. ecommerce-backend or my-python-app"
               value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
+              onChange={(e) => {
+                setProjectName(e.target.value);
+                if (formError) setFormError(null);
+              }}
               autoFocus
               required
             />
+            {createNameError && (
+              <div
+                data-testid="create-project-duplicate-error"
+                style={{ color: '#dc2626', fontSize: '12px', marginTop: '5px', fontWeight: 500 }}
+              >
+                {createNameError}
+              </div>
+            )}
           </div>
 
           <div className="form-group">
@@ -377,7 +450,13 @@ export const ProjectsPage: React.FC = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={isSubmitting}
+              disabled={isSubmitting || !!createNameError}
+              data-testid="submit-create-project-btn"
+            >
               Create Project
             </Button>
           </div>
@@ -392,7 +471,10 @@ export const ProjectsPage: React.FC = () => {
       >
         <form onSubmit={handleRenameSubmit}>
           {formError && (
-            <div style={{ padding: '10px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '13px', marginBottom: '14px' }}>
+            <div
+              data-testid="rename-project-error-banner"
+              style={{ padding: '10px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '13px', marginBottom: '14px' }}
+            >
               {formError}
             </div>
           )}
@@ -401,11 +483,23 @@ export const ProjectsPage: React.FC = () => {
             <label className="form-label">Project Name *</label>
             <input
               type="text"
+              data-testid="rename-project-name-input"
               className="form-input"
               value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
+              onChange={(e) => {
+                setProjectName(e.target.value);
+                if (formError) setFormError(null);
+              }}
               required
             />
+            {renameNameError && (
+              <div
+                data-testid="rename-project-duplicate-error"
+                style={{ color: '#dc2626', fontSize: '12px', marginTop: '5px', fontWeight: 500 }}
+              >
+                {renameNameError}
+              </div>
+            )}
           </div>
 
           <div className="form-group">
@@ -425,7 +519,13 @@ export const ProjectsPage: React.FC = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" isLoading={isSubmitting}>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={isSubmitting}
+              disabled={isSubmitting || !!renameNameError}
+              data-testid="submit-rename-project-btn"
+            >
               Save Changes
             </Button>
           </div>

@@ -1,4 +1,5 @@
 import json
+import uuid
 from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
@@ -244,7 +245,7 @@ def test_root_cause_api_full_lifecycle(client: TestClient):
     # 1. Create a Project
     proj_resp = client.post(
         "/api/v1/projects",
-        json={"name": "RCA Upgrade Project", "language": "python", "description": "Testing upgraded RCA"},
+        json={"name": f"RCA Upgrade Project {uuid.uuid4().hex[:6]}", "language": "python", "description": "Testing upgraded RCA"},
     )
     assert proj_resp.status_code == 201
     project_id = proj_resp.json()["id"]

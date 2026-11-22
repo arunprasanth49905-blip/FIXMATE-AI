@@ -15,6 +15,7 @@ class Project(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(120), nullable=False, index=True)
+    normalized_name = Column(String(120), nullable=True, index=True)
     description = Column(Text, nullable=True)
     language = Column(String(50), nullable=False, default="python")
     created_at = Column(DateTime, default=get_utc_now, nullable=False)

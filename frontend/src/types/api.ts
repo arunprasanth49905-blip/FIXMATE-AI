@@ -50,11 +50,13 @@ export interface ApiError {
 export interface Project {
   id: string;
   name: string;
+  normalized_name?: string;
   description: string | null;
   language: string;
   created_at: string;
   updated_at: string;
   file_count: number;
+  is_duplicate?: boolean;
 }
 
 export interface ProjectCreatePayload {

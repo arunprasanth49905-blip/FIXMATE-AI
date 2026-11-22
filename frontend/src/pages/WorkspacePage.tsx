@@ -54,6 +54,7 @@ export const WorkspacePage: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<FileTreeItem | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [editProjectName, setEditProjectName] = useState('');
+  const [isRenamingProject, setIsRenamingProject] = useState(false);
 
   // Phase 3: Structural Intelligence & Parsing State
   const [isAnalysisPanelOpen, setIsAnalysisPanelOpen] = useState(false);
@@ -396,13 +397,27 @@ export const WorkspacePage: React.FC = () => {
   // Rename project
   const handleRenameProjectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editProjectName.trim() || !project) return;
+    if (!project) return;
+    const trimmed = editProjectName.trim();
+    if (!trimmed) {
+      setModalError('Project name cannot be empty or only whitespace');
+      return;
+    }
+    // If the name is unchanged, simply close
+    if (trimmed === project.name) {
+      setIsRenameProjectModalOpen(false);
+      return;
+    }
+    setIsRenamingProject(true);
+    setModalError(null);
     try {
-      const updated = await apiClient.updateProject(project.id, { name: editProjectName.trim() });
+      const updated = await apiClient.updateProject(project.id, { name: trimmed });
       setProject(updated);
       setIsRenameProjectModalOpen(false);
     } catch (err: unknown) {
-      setModalError(parseErrorMessage(err, 'Failed to rename project. Please try again.'));
+      setModalError(parseErrorMessage(err, 'Project name already exists. Choose a different project name.'));
+    } finally {
+      setIsRenamingProject(false);
     }
   };
 
@@ -917,7 +932,10 @@ export const WorkspacePage: React.FC = () => {
       >
         <form onSubmit={handleRenameProjectSubmit}>
           {modalError && (
-            <div style={{ padding: '8px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '12.5px', marginBottom: '12px' }}>
+            <div
+              data-testid="workspace-rename-error-banner"
+              style={{ padding: '8px 12px', backgroundColor: 'var(--color-red-subtle)', color: 'var(--color-red-danger)', borderRadius: '6px', fontSize: '12.5px', marginBottom: '12px' }}
+            >
               {modalError}
             </div>
           )}
@@ -926,9 +944,13 @@ export const WorkspacePage: React.FC = () => {
             <label className="form-label">Project Name</label>
             <input
               type="text"
+              data-testid="workspace-rename-project-input"
               className="form-input"
               value={editProjectName}
-              onChange={(e) => setEditProjectName(e.target.value)}
+              onChange={(e) => {
+                setEditProjectName(e.target.value);
+                if (modalError) setModalError(null);
+              }}
               autoFocus
               required
             />
@@ -938,7 +960,13 @@ export const WorkspacePage: React.FC = () => {
             <Button type="button" variant="secondary" onClick={() => setIsRenameProjectModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={isRenamingProject}
+              disabled={isRenamingProject}
+              data-testid="workspace-rename-project-submit-btn"
+            >
               Save
             </Button>
           </div>

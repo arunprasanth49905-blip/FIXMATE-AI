@@ -57,6 +57,32 @@ async def lifespan(app: FastAPI):
                 for col_name, col_def in repair_cols:
                     if col_name not in existing_repair_cols:
                         conn.execute(text(f"ALTER TABLE repair_proposals ADD COLUMN {col_name} {col_def}"))
+
+            # Project duplicate name protection migration check
+            cursor_proj = conn.execute(text("PRAGMA table_info(projects)"))
+            existing_proj_cols = {row[1] for row in cursor_proj.fetchall()}
+            if existing_proj_cols and "normalized_name" not in existing_proj_cols:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN normalized_name VARCHAR(120)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_projects_normalized_name ON projects (normalized_name)"))
+
+            # Backfill any missing normalized_name values
+            conn.execute(text("UPDATE projects SET normalized_name = LOWER(TRIM(name)) WHERE normalized_name IS NULL"))
+
+            # Audit and report any existing duplicate project names safely
+            dup_cursor = conn.execute(text(
+                "SELECT normalized_name, COUNT(*) as cnt, GROUP_CONCAT(id) as ids, "
+                "GROUP_CONCAT(name) as names, GROUP_CONCAT(language) as langs "
+                "FROM projects GROUP BY normalized_name HAVING COUNT(*) > 1"
+            ))
+            dup_rows = dup_cursor.fetchall()
+            if dup_rows:
+                logger.warning(f"Project Name Duplicate Audit: Found {len(dup_rows)} duplicate groups in existing database:")
+                for row in dup_rows:
+                    logger.warning(
+                        f" - Group '{row[0]}': {row[1]} projects. IDs: [{row[2]}], Names: [{row[3]}], Languages: [{row[4]}]"
+                    )
+            else:
+                logger.info("Project Name Duplicate Audit: Zero duplicates detected in existing database.")
     except Exception as e:
         logger.warning(f"Schema migration check notice: {e}")
 

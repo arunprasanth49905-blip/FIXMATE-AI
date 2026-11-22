@@ -1,3 +1,4 @@
+import uuid
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,7 +8,7 @@ def detection_project(client: TestClient):
     """Creates a fresh project populated with Python and JavaScript files containing intentional bugs."""
     # 1. Create Project
     res = client.post("/api/v1/projects", json={
-        "name": "Detection Engine Test Project",
+        "name": f"Detection Engine Test Project {uuid.uuid4().hex[:6]}",
         "description": "Multi-language static bug detection fixture",
         "language": "python"
     })

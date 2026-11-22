@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
+from app.core.normalization import validate_project_name, normalize_project_name
 
 
 class ProjectBase(BaseModel):
@@ -11,10 +12,7 @@ class ProjectBase(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str) -> str:
-        trimmed = v.strip()
-        if not trimmed:
-            raise ValueError("Project name cannot be empty or only whitespace")
-        return trimmed
+        return validate_project_name(v)
 
     @field_validator("language")
     @classmethod
@@ -39,18 +37,17 @@ class ProjectUpdate(BaseModel):
     @classmethod
     def validate_name(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
-            trimmed = v.strip()
-            if not trimmed:
-                raise ValueError("Project name cannot be empty or only whitespace")
-            return trimmed
+            return validate_project_name(v)
         return v
 
 
 class ProjectResponse(ProjectBase):
     id: str
+    normalized_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     file_count: int = 0
+    is_duplicate: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -58,3 +55,15 @@ class ProjectResponse(ProjectBase):
 class ProjectListResponse(BaseModel):
     total: int
     projects: List[ProjectResponse]
+
+
+class DuplicateProjectGroup(BaseModel):
+    normalized_name: str
+    count: int
+    projects: List[ProjectResponse]
+
+
+class DuplicateAuditResponse(BaseModel):
+    total_duplicate_groups: int
+    total_duplicate_projects: int
+    groups: List[DuplicateProjectGroup]
