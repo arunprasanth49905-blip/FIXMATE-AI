@@ -21,7 +21,7 @@ class RuntimeDetector:
         if not force_check and self._cached_result is not None and (now - self._last_checked) < self._cache_ttl:
             return self._cached_result
 
-        docker_bin = shutil.which("docker")
+        docker_bin = shutil.which("docker.exe") or shutil.which("docker")
         if not docker_bin:
             res = (
                 False,
@@ -38,6 +38,7 @@ class RuntimeDetector:
         try:
             ver_proc = subprocess.run(
                 [docker_bin, "--version"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=3,
@@ -52,6 +53,7 @@ class RuntimeDetector:
         try:
             info_proc = subprocess.run(
                 [docker_bin, "info"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=3,

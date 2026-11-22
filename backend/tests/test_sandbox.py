@@ -1,4 +1,6 @@
 import json
+import sys
+import subprocess
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -304,9 +306,9 @@ def test_docker_runner_enforces_security_flags(tmp_path: Path):
         mock_res.stderr = ""
         mock_res.stdout = ""
         if len(cmd) > 1 and cmd[1] == "create":
-            captured_create_cmds.append(cmd)
+            captured_create_cmds.append((cmd, kwargs))
         elif len(cmd) > 1 and cmd[1] == "cp":
-            captured_cp_cmds.append(cmd)
+            captured_cp_cmds.append((cmd, kwargs))
         return mock_res
 
     def mock_popen(cmd, **kwargs):
@@ -329,7 +331,11 @@ def test_docker_runner_enforces_security_flags(tmp_path: Path):
             )
 
     assert len(captured_create_cmds) == 1
-    create_cmd = captured_create_cmds[0]
+    create_cmd, create_kwargs = captured_create_cmds[0]
+
+    # Verify Windows process-group isolation flag
+    expected_flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+    assert create_kwargs.get("creationflags") == expected_flags
 
     # Verify critical isolation flags
     assert "--network=none" in create_cmd
@@ -348,12 +354,13 @@ def test_docker_runner_enforces_security_flags(tmp_path: Path):
 
     # Verify docker cp was used for secure container file delivery
     assert len(captured_cp_cmds) == 1
-    assert captured_cp_cmds[0][1] == "cp"
+    assert captured_cp_cmds[0][0][1] == "cp"
 
     # Verify container was started with DEVNULL stdin to prevent SIGINT (exit code 130)
     assert len(captured_start_cmds) == 1
     start_cmd, popen_kwargs = captured_start_cmds[0]
-    assert start_cmd == ["docker", "start", "-a", "fixmate-sb-test-sec-exec-123"]
+    assert start_cmd[1:] == ["start", "-a", "fixmate-sb-test-sec-exec-123"]
+    assert "docker" in start_cmd[0].lower()
     import subprocess as sp
     assert popen_kwargs.get("stdin") == sp.DEVNULL
 
@@ -363,6 +370,89 @@ def test_docker_runner_enforces_security_flags(tmp_path: Path):
         assert "API_KEY" not in arg
         assert "DATABASE_URL" not in arg
         assert "docker.sock" not in arg
+
+
+def test_docker_create_process_group_flag_platform_compatibility(tmp_path: Path):
+    """
+    Verifies that CREATE_NEW_PROCESS_GROUP (0x200) is passed on Windows and 0 on Linux.
+    """
+    staging_file = tmp_path / "script.py"
+    staging_file.write_text("print('test')")
+
+    captured_kwargs = []
+
+    def mock_run(cmd, *args, **kwargs):
+        if len(cmd) > 1 and cmd[1] == "create":
+            captured_kwargs.append(kwargs)
+        res = MagicMock()
+        res.returncode = 0
+        return res
+
+    with patch("subprocess.run", side_effect=mock_run):
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.communicate.return_value = ("", "")
+            mock_proc.returncode = 0
+            mock_popen.return_value = mock_proc
+
+            # Test Windows
+            with patch("sys.platform", "win32"):
+                docker_runner.execute(
+                    execution_id="win-exec",
+                    image="python:3.13-slim",
+                    staging_dir=tmp_path,
+                    entrypoint_cmd=["python", "-u", "script.py"],
+                )
+                assert captured_kwargs[-1].get("creationflags") == subprocess.CREATE_NEW_PROCESS_GROUP
+
+            # Test Linux
+            with patch("sys.platform", "linux"):
+                docker_runner.execute(
+                    execution_id="linux-exec",
+                    image="python:3.13-slim",
+                    staging_dir=tmp_path,
+                    entrypoint_cmd=["python", "-u", "script.py"],
+                )
+                assert captured_kwargs[-1].get("creationflags") == 0
+
+
+def test_docker_create_failure_handled_safely_and_cleans_up(tmp_path: Path):
+    """
+    Verifies that when docker create fails, it returns safe error message and runs container cleanup.
+    """
+    captured_rm_cmds = []
+
+    def mock_run(cmd, *args, **kwargs):
+        res = MagicMock()
+        if len(cmd) > 1 and cmd[1] == "create":
+            res.returncode = 1
+            res.stderr = "daemon error: out of memory"
+            res.stdout = ""
+        elif len(cmd) > 1 and cmd[1] == "rm":
+            captured_rm_cmds.append(cmd)
+            res.returncode = 0
+            res.stderr = ""
+            res.stdout = ""
+        else:
+            res.returncode = 0
+            res.stderr = ""
+            res.stdout = ""
+        return res
+
+    with patch("subprocess.run", side_effect=mock_run):
+        exit_code, stdout, stderr, is_timeout, duration_ms = docker_runner.execute(
+            execution_id="fail-create-exec",
+            image="python:3.13-slim",
+            staging_dir=tmp_path,
+            entrypoint_cmd=["python", "-u", "script.py"],
+        )
+
+    assert exit_code == 1
+    assert "Failed to create sandbox container: daemon error: out of memory" in stderr
+    assert is_timeout is False
+    assert len(captured_rm_cmds) >= 1
+    assert any("fail-create-exec" in arg for cmd in captured_rm_cmds for arg in cmd)
+
 
 
 def test_docker_runner_stdin_mode_enforces_security():
