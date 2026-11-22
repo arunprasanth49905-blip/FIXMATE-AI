@@ -726,6 +726,7 @@ export interface SandboxStatusResponse {
 
 export interface ExecuteCodeRequest {
   file_path: string;
+  code?: string;
   timeout_seconds?: number;
 }
 

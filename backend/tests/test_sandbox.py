@@ -288,16 +288,29 @@ def test_execute_tests_missing_dependencies(client: TestClient, sandbox_project:
 def test_docker_runner_enforces_security_flags(tmp_path: Path):
     """
     Verifies that docker_runner constructs the CLI arguments with full isolation:
-    --network none, --memory, --read-only, --user 1000:1000, --cap-drop ALL,
-    --security-opt no-new-privileges, -v <path>:/workspace:ro.
+    --network none, --memory, --user 1000:1000, --cap-drop ALL,
+    --security-opt no-new-privileges, and zero host volume binds (-v).
     """
     staging_file = tmp_path / "script.py"
     staging_file.write_text("print('test')")
 
-    captured_cmds = []
+    captured_create_cmds = []
+    captured_cp_cmds = []
+    captured_start_cmds = []
+
+    def mock_run(cmd, *args, **kwargs):
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stderr = ""
+        mock_res.stdout = ""
+        if len(cmd) > 1 and cmd[1] == "create":
+            captured_create_cmds.append(cmd)
+        elif len(cmd) > 1 and cmd[1] == "cp":
+            captured_cp_cmds.append(cmd)
+        return mock_res
 
     def mock_popen(cmd, **kwargs):
-        captured_cmds.append(cmd)
+        captured_start_cmds.append((cmd, kwargs))
         mock_proc = MagicMock()
         mock_proc.communicate.return_value = ("test output", "")
         mock_proc.returncode = 0
@@ -305,40 +318,127 @@ def test_docker_runner_enforces_security_flags(tmp_path: Path):
 
     limits = get_default_limits()
 
-    with patch("subprocess.Popen", side_effect=mock_popen):
-        with patch("subprocess.run") as mock_run:
+    with patch("subprocess.run", side_effect=mock_run):
+        with patch("subprocess.Popen", side_effect=mock_popen):
             docker_runner.execute(
                 execution_id="test-sec-exec-123",
                 image="python:3.13-slim",
                 staging_dir=tmp_path,
-                entrypoint_cmd=["python", "script.py"],
+                entrypoint_cmd=["python", "-u", "script.py"],
                 limits=limits,
             )
 
-    assert len(captured_cmds) == 1
-    cmd = captured_cmds[0]
+    assert len(captured_create_cmds) == 1
+    create_cmd = captured_create_cmds[0]
 
     # Verify critical isolation flags
-    assert "--network=none" in cmd
-    assert "--read-only" in cmd
-    assert f"--memory={limits.memory_mb}m" in cmd
-    assert f"--memory-swap={limits.memory_mb}m" in cmd
-    assert f"--cpus={limits.cpus}" in cmd
-    assert f"--pids-limit={limits.pids}" in cmd
-    assert "--user=1000:1000" in cmd
-    assert "--cap-drop=ALL" in cmd
-    assert "--security-opt=no-new-privileges" in cmd
+    assert "--network=none" in create_cmd
+    assert f"--memory={limits.memory_mb}m" in create_cmd
+    assert f"--memory-swap={limits.memory_mb}m" in create_cmd
+    assert f"--cpus={limits.cpus}" in create_cmd
+    assert f"--pids-limit={limits.pids}" in create_cmd
+    assert "--user=1000:1000" in create_cmd
+    assert "--cap-drop=ALL" in create_cmd
+    assert "--security-opt=no-new-privileges" in create_cmd
+    assert "-w" in create_cmd
+    assert "/workspace" in create_cmd
 
-    # Verify read-only staging mount
-    mount_arg = [arg for arg in cmd if ":/workspace:ro" in arg]
-    assert len(mount_arg) == 1
+    # Verify zero host directory mounts (-v)
+    assert not any(arg == "-v" or ":/workspace:ro" in arg for arg in create_cmd)
+
+    # Verify docker cp was used for secure container file delivery
+    assert len(captured_cp_cmds) == 1
+    assert captured_cp_cmds[0][1] == "cp"
+
+    # Verify container was started with DEVNULL stdin to prevent SIGINT (exit code 130)
+    assert len(captured_start_cmds) == 1
+    start_cmd, popen_kwargs = captured_start_cmds[0]
+    assert start_cmd == ["docker", "start", "-a", "fixmate-sb-test-sec-exec-123"]
+    import subprocess as sp
+    assert popen_kwargs.get("stdin") == sp.DEVNULL
 
     # Verify zero host secrets exposed in env
-    for arg in cmd:
+    for arg in create_cmd:
         assert "GEMINI" not in arg
         assert "API_KEY" not in arg
         assert "DATABASE_URL" not in arg
         assert "docker.sock" not in arg
+
+
+def test_docker_runner_stdin_mode_enforces_security():
+    """
+    Verifies that docker_runner stdin mode enforces read-only rootfs, network isolation,
+    and pipe stdin.
+    """
+    captured_cmds = []
+
+    def mock_popen(cmd, **kwargs):
+        captured_cmds.append((cmd, kwargs))
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("output", "")
+        mock_proc.returncode = 0
+        return mock_proc
+
+    limits = get_default_limits()
+
+    with patch("subprocess.Popen", side_effect=mock_popen):
+        with patch("subprocess.run"):
+            docker_runner.execute(
+                execution_id="test-stdin-exec",
+                image="python:3.13-slim",
+                entrypoint_cmd=["python", "-u", "-"],
+                limits=limits,
+                stdin_content="print('hello')",
+            )
+
+    assert len(captured_cmds) == 1
+    cmd, kwargs = captured_cmds[0]
+    assert "--network=none" in cmd
+    assert "--read-only" in cmd
+    assert "-i" in cmd
+    import subprocess as sp
+    assert kwargs.get("stdin") == sp.PIPE
+
+
+def test_submitted_code_in_request_executes(client: TestClient, sandbox_project: str):
+    """
+    Task 5 Regression Test: Verify submitted code in request body is staged and executed.
+    """
+    submitted_code = 'print("SUBMITTED CODE EXECUTED SUCCESSFULLY")\n'
+    mock_run_result = (0, "SUBMITTED CODE EXECUTED SUCCESSFULLY\n", "", False, 80.0)
+
+    with patch.object(runtime_detector, "check_runtime", return_value=(True, "docker", "29.6.2", "Active")):
+        with patch.object(docker_runner, "execute", return_value=mock_run_result) as mock_exec:
+            resp = client.post(
+                f"/api/v1/projects/{sandbox_project}/execution/run",
+                json={"file_path": "main.py", "code": submitted_code},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "PASSED"
+            assert data["exit_code"] == 0
+            assert "SUBMITTED CODE EXECUTED SUCCESSFULLY" in data["stdout"]
+            assert mock_exec.called
+
+
+def test_empty_code_execution_handled_safely(client: TestClient, sandbox_project: str):
+    """
+    Task 5 Regression Test: Verify empty submitted code executes safely returning exit code 0.
+    """
+    mock_run_result = (0, "", "", False, 40.0)
+
+    with patch.object(runtime_detector, "check_runtime", return_value=(True, "docker", "29.6.2", "Active")):
+        with patch.object(docker_runner, "execute", return_value=mock_run_result):
+            resp = client.post(
+                f"/api/v1/projects/{sandbox_project}/execution/run",
+                json={"file_path": "main.py", "code": ""},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["status"] == "PASSED"
+            assert data["exit_code"] == 0
+            assert data["stdout"] == ""
+            assert data["stderr"] == ""
 
 
 def test_output_truncation_limits():

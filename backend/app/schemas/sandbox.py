@@ -27,6 +27,7 @@ class SandboxStatusResponse(BaseModel):
 
 class ExecuteCodeRequest(BaseModel):
     file_path: str = Field(..., min_length=1, max_length=500, description="Relative project path of file to execute")
+    code: Optional[str] = Field(None, description="Optional submitted source code to execute")
     timeout_seconds: Optional[int] = Field(None, ge=1, le=60, description="Optional custom execution timeout in seconds")
 
 

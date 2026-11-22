@@ -114,6 +114,12 @@ class SandboxOrchestrator:
         try:
             self._stage_project_files(project_id, staging_dir)
 
+            # If user submitted modified/in-memory code, update the staged target file
+            target_staged_file = (staging_dir / clean_rel_path).resolve()
+            if request.code is not None and target_staged_file.is_relative_to(staging_dir):
+                target_staged_file.parent.mkdir(parents=True, exist_ok=True)
+                target_staged_file.write_text(request.code, encoding="utf-8")
+
             # 6. Build entrypoint command
             if language == "Python":
                 entrypoint = ["python", "-u", clean_rel_path]

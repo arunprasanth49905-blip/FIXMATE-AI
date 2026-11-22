@@ -490,7 +490,10 @@ export const WorkspacePage: React.FC = () => {
       if (pendingRunType === 'test') {
         res = await apiClient.executeTests(projectId, { test_file_path: activeTab.path });
       } else {
-        res = await apiClient.executeCode(projectId, { file_path: activeTab.path });
+        res = await apiClient.executeCode(projectId, {
+          file_path: activeTab.path,
+          code: activeContent,
+        });
       }
       setCurrentExecution(res);
       setExecutionHistory((prev) => [res, ...prev.filter((h) => h.id !== res.id)]);
