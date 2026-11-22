@@ -37,6 +37,11 @@ import {
   VerificationReportResponse,
   VerificationHistoryResponse,
   VerificationListResponse,
+  SandboxStatusResponse,
+  ExecuteCodeRequest,
+  ExecuteTestRequest,
+  SandboxExecutionResponse,
+  SandboxExecutionListResponse,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -503,5 +508,33 @@ export const apiClient = {
     if (params?.pageSize) searchParams.set('page_size', params.pageSize.toString());
     const qs = searchParams.toString() ? `?${searchParams.toString()}` : '';
     return request<VerificationListResponse>(`/verification/history${qs}`);
+  },
+
+  // Phase 9 Secure Sandbox Execution & Runtime Validation APIs
+  getSandboxStatus: (): Promise<SandboxStatusResponse> => {
+    return request<SandboxStatusResponse>('/sandbox/status');
+  },
+
+  executeCode: (projectId: string, payload: ExecuteCodeRequest): Promise<SandboxExecutionResponse> => {
+    return request<SandboxExecutionResponse>(`/projects/${projectId}/execution/run`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  executeTests: (projectId: string, payload: ExecuteTestRequest): Promise<SandboxExecutionResponse> => {
+    return request<SandboxExecutionResponse>(`/projects/${projectId}/execution/tests`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getExecutionHistory: (projectId: string, limit?: number): Promise<SandboxExecutionListResponse> => {
+    const q = limit ? `?limit=${limit}` : '';
+    return request<SandboxExecutionListResponse>(`/projects/${projectId}/execution/history${q}`);
+  },
+
+  getExecutionById: (projectId: string, executionId: string): Promise<SandboxExecutionResponse> => {
+    return request<SandboxExecutionResponse>(`/projects/${projectId}/execution/${executionId}`);
   },
 };

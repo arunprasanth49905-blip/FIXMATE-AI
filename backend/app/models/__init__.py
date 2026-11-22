@@ -4,6 +4,7 @@ from app.models.detection import DetectionRun, DetectionFinding
 from app.models.root_cause import RootCauseAnalysis
 from app.models.repair import RepairProposal, RepairBackup, RepairAuditLog
 from app.models.verification import RepairVerification
+from app.models.sandbox import SandboxExecution
 
 __all__ = [
     "Project",
@@ -17,4 +18,5 @@ __all__ = [
     "RepairBackup",
     "RepairAuditLog",
     "RepairVerification",
+    "SandboxExecution",
 ]

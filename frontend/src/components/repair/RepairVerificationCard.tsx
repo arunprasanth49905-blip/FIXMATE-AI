@@ -9,6 +9,7 @@ import {
   RefreshCw,
   X,
   Loader2,
+  Play,
 } from 'lucide-react';
 import { VerificationReportResponse } from '../../types/api';
 import { apiClient } from '../../services/apiClient';
@@ -20,6 +21,7 @@ interface RepairVerificationCardProps {
   onReverify?: () => void;
   isVerifying?: boolean;
   onClose?: () => void;
+  onRunInSandbox?: (filePath: string) => void;
 }
 
 export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
@@ -29,6 +31,7 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
   onReverify,
   isVerifying = false,
   onClose,
+  onRunInSandbox,
 }) => {
   const [report, setReport] = useState<VerificationReportResponse>(initialReport);
   const [showHistory, setShowHistory] = useState(false);
@@ -164,6 +167,30 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
 
         {/* Action Controls: Re-verify & History */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {onRunInSandbox && report.overall_status.toLowerCase() === 'verified' && (
+            <button
+              onClick={() => onRunInSandbox(report.file_path)}
+              data-testid="run-verified-sandbox-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '5px 10px',
+                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                borderRadius: '6px',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                fontSize: '11.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              title="Execute verified repaired file in isolated Docker sandbox"
+            >
+              <Play size={12} fill="#38bdf8" />
+              <span>Run in Sandbox</span>
+            </button>
+          )}
+
           {onReverify && (
             <button
               onClick={onReverify}

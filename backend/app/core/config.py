@@ -37,6 +37,18 @@ class Settings(BaseSettings):
         ".env.example", ".xml", ".csv", ".ini", ".cfg", ".conf", ".gitignore"
     ]
 
+    # Phase 9: Secure Sandbox Execution Configuration
+    SANDBOX_ENABLED: bool = True
+    SANDBOX_DEFAULT_TIMEOUT_SECONDS: int = 10
+    SANDBOX_MAX_TIMEOUT_SECONDS: int = 30
+    SANDBOX_MAX_MEMORY_MB: int = 256
+    SANDBOX_MAX_CPUS: float = 1.0
+    SANDBOX_MAX_PIDS: int = 64
+    SANDBOX_MAX_OUTPUT_BYTES: int = 1024 * 1024  # 1 MB per output stream
+    SANDBOX_PYTHON_IMAGE: str = "python:3.13-slim"
+    SANDBOX_JS_IMAGE: str = "node:20-slim"
+    SANDBOX_STAGING_ROOT: str = "./data/sandbox_staging"
+
     model_config = SettingsConfigDict(
         env_file=("backend/.env", ".env"),
         env_file_encoding="utf-8",
@@ -51,6 +63,14 @@ class Settings(BaseSettings):
             raise ValueError("Invalid project workspace directory resolution")
         project_dir.mkdir(parents=True, exist_ok=True)
         return project_dir
+
+    def get_sandbox_staging_dir(self, execution_id: str) -> Path:
+        base_dir = Path(self.SANDBOX_STAGING_ROOT).resolve()
+        staging_dir = (base_dir / execution_id).resolve()
+        if not staging_dir.is_relative_to(base_dir):
+            raise ValueError("Invalid sandbox staging directory resolution")
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        return staging_dir
 
 
 settings = Settings()

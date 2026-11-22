@@ -9,9 +9,19 @@ import {
   AlertCircle,
   Sparkles,
   Bug,
+  Play,
+  FlaskConical,
+  Terminal,
 } from 'lucide-react';
 import { apiClient, parseErrorMessage } from '../services/apiClient';
-import { Project, FileTreeItem, ProjectAnalysisResponse, DetectionRunResponse } from '../types/api';
+import {
+  Project,
+  FileTreeItem,
+  ProjectAnalysisResponse,
+  DetectionRunResponse,
+  SandboxStatusResponse,
+  SandboxExecutionResponse,
+} from '../types/api';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -20,6 +30,7 @@ import { EditorTabs, OpenTab } from '../components/workspace/EditorTabs';
 import { CodeEditor } from '../components/workspace/CodeEditor';
 import { AnalysisPanel } from '../components/analysis/AnalysisPanel';
 import { DetectionPanel } from '../components/detection/DetectionPanel';
+import { SandboxConsoleDrawer } from '../components/sandbox/SandboxConsoleDrawer';
 
 export const WorkspacePage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -67,9 +78,29 @@ export const WorkspacePage: React.FC = () => {
   const [latestDetection, setLatestDetection] = useState<DetectionRunResponse | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
 
+  // Phase 9: Secure Sandbox Execution State
+  const [sandboxStatus, setSandboxStatus] = useState<SandboxStatusResponse | null>(null);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+  const [currentExecution, setCurrentExecution] = useState<SandboxExecutionResponse | null>(null);
+  const [executionHistory, setExecutionHistory] = useState<SandboxExecutionResponse[]>([]);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [isConfirmRunModalOpen, setIsConfirmRunModalOpen] = useState(false);
+  const [pendingRunType, setPendingRunType] = useState<'code' | 'test'>('code');
+
   const activeTab = openTabs.find((t) => t.id === activeTabId);
   const activeContent = activeTabId ? tabContents[activeTabId] ?? '' : '';
   const isCurrentFileDirty = activeTabId ? tabContents[activeTabId] !== savedContents[activeTabId] : false;
+
+  const activeFileName = activeTab?.name?.toLowerCase() || '';
+  const activeFileExt = activeFileName.includes('.') ? '.' + activeFileName.split('.').pop() : '';
+  const canRunCode = ['.py', '.pyw', '.js', '.mjs', '.cjs'].includes(activeFileExt);
+  const isTestFile =
+    canRunCode &&
+    (activeTab?.path?.toLowerCase().includes('test') ||
+      activeTab?.name?.toLowerCase().startsWith('test_') ||
+      activeTab?.name?.toLowerCase().endsWith('_test.py') ||
+      activeTab?.name?.toLowerCase().includes('.test.'));
+  const canRunTests = isTestFile;
 
   // Load project and file tree
   const loadWorkspace = useCallback(async () => {
@@ -102,6 +133,21 @@ export const WorkspacePage: React.FC = () => {
         } catch {
           // No previous detection run, default clean state
         }
+      }
+
+      // Attempt to load sandbox status and execution history (Phase 9)
+      try {
+        const [sbStatus, execHistory] = await Promise.all([
+          apiClient.getSandboxStatus(),
+          apiClient.getExecutionHistory(projectId, 30),
+        ]);
+        setSandboxStatus(sbStatus);
+        setExecutionHistory(execHistory.items || []);
+        if (execHistory.items && execHistory.items.length > 0) {
+          setCurrentExecution(execHistory.items[0]);
+        }
+      } catch {
+        // Silent fallback if sandbox status endpoint fails
       }
     } catch (err: unknown) {
       const msg = parseErrorMessage(err, 'Failed to load workspace.');
@@ -421,6 +467,41 @@ export const WorkspacePage: React.FC = () => {
     }
   };
 
+  // Phase 9: Secure Sandbox Execution Handlers
+  const handlePromptRunCode = () => {
+    if (!activeTab || !canRunCode) return;
+    setPendingRunType('code');
+    setIsConfirmRunModalOpen(true);
+  };
+
+  const handlePromptRunTests = () => {
+    if (!activeTab || !canRunTests) return;
+    setPendingRunType('test');
+    setIsConfirmRunModalOpen(true);
+  };
+
+  const handleExecuteSandbox = async () => {
+    if (!projectId || !activeTab) return;
+    setIsConfirmRunModalOpen(false);
+    setIsConsoleOpen(true);
+    setIsExecuting(true);
+    try {
+      let res: SandboxExecutionResponse;
+      if (pendingRunType === 'test') {
+        res = await apiClient.executeTests(projectId, { test_file_path: activeTab.path });
+      } else {
+        res = await apiClient.executeCode(projectId, { file_path: activeTab.path });
+      }
+      setCurrentExecution(res);
+      setExecutionHistory((prev) => [res, ...prev.filter((h) => h.id !== res.id)]);
+    } catch (err: unknown) {
+      const msg = parseErrorMessage(err, 'Failed to trigger sandbox execution.');
+      alert(msg);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Phase 3: Trigger Codebase Parsing
   const handleTriggerAnalysis = async () => {
     if (!projectId) return;
@@ -648,6 +729,71 @@ export const WorkspacePage: React.FC = () => {
           >
             <Save size={13} />
             <span>{isSaving ? 'Saving...' : 'Save'}</span>
+          </Button>
+
+          <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--color-border)', margin: '0 2px' }} />
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handlePromptRunCode}
+            disabled={!canRunCode || isExecuting}
+            data-testid="run-code-button"
+            title={canRunCode ? 'Execute active file in isolated sandbox (Phase 9)' : 'Open a Python (.py) or JavaScript (.js) file to run code'}
+            style={{
+              borderColor: canRunCode ? '#10b981' : undefined,
+              color: canRunCode ? '#065f46' : undefined,
+              backgroundColor: canRunCode ? '#ecfdf5' : undefined,
+            }}
+          >
+            <Play size={13} style={{ color: canRunCode ? '#10b981' : '#94a3b8' }} />
+            <span>Run Code</span>
+          </Button>
+
+          {canRunTests && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handlePromptRunTests}
+              disabled={isExecuting}
+              data-testid="run-tests-button"
+              title="Run tests in isolated sandbox using pytest or node:test"
+              style={{
+                borderColor: '#8b5cf6',
+                color: '#5b21b6',
+                backgroundColor: '#f5f3ff',
+              }}
+            >
+              <FlaskConical size={13} style={{ color: '#8b5cf6' }} />
+              <span>Run Tests</span>
+            </Button>
+          )}
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsConsoleOpen(!isConsoleOpen)}
+            data-testid="toggle-console-button"
+            title="Toggle Sandbox Execution Console"
+            style={{
+              borderColor: isConsoleOpen ? '#38bdf8' : undefined,
+              backgroundColor: isConsoleOpen ? '#0f172a' : undefined,
+              color: isConsoleOpen ? '#38bdf8' : undefined,
+            }}
+          >
+            <Terminal size={13} />
+            <span>Console</span>
+            {currentExecution && (
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: currentExecution.status === 'PASSED' ? '#10b981' : '#ef4444',
+                  marginLeft: '2px',
+                }}
+              />
+            )}
           </Button>
         </div>
       </header>
@@ -972,6 +1118,91 @@ export const WorkspacePage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Phase 9: Modal Confirm Sandbox Execution */}
+      <Modal
+        isOpen={isConfirmRunModalOpen}
+        onClose={() => setIsConfirmRunModalOpen(false)}
+        title={pendingRunType === 'test' ? 'Run Tests in Isolated Sandbox' : 'Run Code in Isolated Sandbox'}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {sandboxStatus && !sandboxStatus.available && (
+            <div
+              data-testid="sandbox-unavailable-warning"
+              style={{
+                padding: '10px 12px',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '6px',
+                color: '#b91c1c',
+                fontSize: '12.5px',
+                lineHeight: 1.4,
+              }}
+            >
+              <strong>Security Alert:</strong> Sandbox runtime (Docker) is currently unavailable on the host. Execution will fail closed with <code>SANDBOX_UNAVAILABLE</code> without running on the host OS.
+            </div>
+          )}
+
+          <p style={{ fontSize: '13.5px', color: 'var(--color-navy-700)', margin: 0 }}>
+            You are about to execute <strong>{activeTab?.path}</strong> in an ephemeral, strictly isolated Docker container.
+          </p>
+
+          <div
+            style={{
+              padding: '12px',
+              backgroundColor: 'var(--color-navy-50)',
+              borderRadius: '6px',
+              fontSize: '12px',
+              color: 'var(--color-navy-600)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div><strong>Mode:</strong> {pendingRunType === 'test' ? 'Test Runner (Isolated)' : 'Script Execution'}</div>
+            <div><strong>Environment:</strong> {activeTab?.name.endsWith('.py') ? 'python:3.13-slim' : 'node:20-slim'}</div>
+            <div><strong>Security Profile:</strong> Read-only rootfs, no network access (<code>--network none</code>), 256MB RAM limit, 1.0 CPU, unprivileged user (1000:1000).</div>
+          </div>
+
+          <p style={{ fontSize: '12px', color: 'var(--color-navy-500)', margin: 0 }}>
+            FIXMATE AI enforces a zero-host-execution security model. Source files are mounted in a read-only staging workspace.
+          </p>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsConfirmRunModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleExecuteSandbox}
+              data-testid="confirm-run-sandbox-btn"
+              style={{
+                backgroundColor: pendingRunType === 'test' ? '#7c3aed' : '#0284c7',
+                borderColor: pendingRunType === 'test' ? '#6d28d9' : '#0369a1',
+              }}
+            >
+              {pendingRunType === 'test' ? 'Run Tests in Sandbox' : 'Execute in Sandbox'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Phase 9: Secure Sandbox Console Drawer */}
+      <SandboxConsoleDrawer
+        isOpen={isConsoleOpen}
+        onClose={() => setIsConsoleOpen(false)}
+        currentExecution={currentExecution}
+        isLoading={isExecuting}
+        history={executionHistory}
+        onSelectHistoryItem={(item) => setCurrentExecution(item)}
+        sandboxStatus={sandboxStatus}
+        onRerun={handleExecuteSandbox}
+      />
     </div>
   );
 };

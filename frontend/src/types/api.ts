@@ -701,4 +701,85 @@ export interface VerificationListResponse {
   metrics: VerificationOverviewMetrics;
 }
 
+// ============================================================================
+// Phase 9: Secure Sandbox Execution & Runtime Validation
+// ============================================================================
+
+export type SandboxStatus =
+  | 'PASSED'
+  | 'FAILED'
+  | 'ERROR'
+  | 'TIMEOUT'
+  | 'CANCELLED'
+  | 'UNSUPPORTED'
+  | 'DEPENDENCIES_UNAVAILABLE'
+  | 'SANDBOX_UNAVAILABLE';
+
+export interface SandboxStatusResponse {
+  available: boolean;
+  runtime: string;
+  version: string | null;
+  message: string;
+  supported_languages: string[];
+  security_features: string[];
+}
+
+export interface ExecuteCodeRequest {
+  file_path: string;
+  timeout_seconds?: number;
+}
+
+export interface ExecuteTestRequest {
+  test_file_path: string;
+  test_case?: string;
+  timeout_seconds?: number;
+}
+
+export interface ResourceLimits {
+  timeout_seconds: number;
+  memory_mb: number;
+  cpus: number;
+  pids: number;
+  max_output_bytes: number;
+  network_enabled: boolean;
+}
+
+export interface TestSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  errors: number;
+  skipped: number;
+  framework: string;
+  details?: string | null;
+}
+
+export interface SandboxExecutionResponse {
+  id: string;
+  project_id: string;
+  file_path: string;
+  language: string;
+  execution_type: 'code' | 'test';
+  sandbox_runtime: string;
+  status: SandboxStatus;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  runtime_error: string | null;
+  timeout: boolean;
+  duration_ms: number;
+  start_time: string;
+  end_time: string | null;
+  resource_limits?: ResourceLimits | null;
+  test_summary?: TestSummary | null;
+  cleanup_status: string;
+  created_at: string;
+}
+
+export interface SandboxExecutionListResponse {
+  total: number;
+  items: SandboxExecutionResponse[];
+}
+
+
 
