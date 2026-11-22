@@ -65,3 +65,27 @@ class VerificationHistoryResponse(BaseModel):
     proposal_id: str
     total: int
     verifications: List[VerificationReportResponse]
+
+
+class VerificationListItem(VerificationReportResponse):
+    project_name: Optional[str] = None
+    rule_id: Optional[str] = None
+    rule_name: Optional[str] = None
+
+
+class VerificationOverviewMetrics(BaseModel):
+    total_attempts: int = 0
+    verified_count: int = 0
+    failed_count: int = 0
+    partial_count: int = 0
+    inconclusive_count: int = 0
+    stale_count: int = 0
+
+
+class VerificationListResponse(BaseModel):
+    items: List[VerificationListItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
+    total_pages: int = 1
+    metrics: VerificationOverviewMetrics = Field(default_factory=VerificationOverviewMetrics)

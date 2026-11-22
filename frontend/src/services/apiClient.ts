@@ -36,6 +36,7 @@ import {
   ProposalAuditHistoryResponse,
   VerificationReportResponse,
   VerificationHistoryResponse,
+  VerificationListResponse,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api/v1';
@@ -485,5 +486,22 @@ export const apiClient = {
 
   getVerificationById: (projectId: string, verificationId: string): Promise<VerificationReportResponse> => {
     return request<VerificationReportResponse>(`/projects/${projectId}/verification/${verificationId}`);
+  },
+
+  getVerificationHistoryList: (params?: {
+    projectId?: string;
+    status?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<VerificationListResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.projectId) searchParams.set('project_id', params.projectId);
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.page) searchParams.set('page', params.page.toString());
+    if (params?.pageSize) searchParams.set('page_size', params.pageSize.toString());
+    const qs = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request<VerificationListResponse>(`/verification/history${qs}`);
   },
 };

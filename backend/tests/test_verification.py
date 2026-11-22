@@ -344,3 +344,53 @@ def test_source_remains_unmodified_after_verification(client, test_env):
 
     assert content_before == content_after
     assert hash_before == hash_after
+
+
+def test_list_verifications_api(client, test_env):
+    orig = "def calc(x):\n    return x / 0\n"
+    repaired = "def calc(x):\n    return x / 100\n"
+    proposal = create_applied_proposal(test_env, "calc.py", orig, repaired, rule_id="PY-W007")
+
+    # Run verification to produce a verified record
+    res = client.post(f"/api/v1/projects/{test_env['proj_id']}/repair/{proposal.id}/verify")
+    assert res.status_code == 200
+
+    # 1. Global list
+    list_res = client.get("/api/v1/verification/history")
+    assert list_res.status_code == 200
+    data = list_res.json()
+    assert data["total"] >= 1
+    assert len(data["items"]) >= 1
+    assert data["metrics"]["total_attempts"] >= 1
+    assert data["metrics"]["verified_count"] >= 1
+
+    first_item = data["items"][0]
+    assert first_item["project_id"] == test_env["proj_id"]
+    assert first_item["project_name"] == test_env["project"].name
+    assert first_item["file_path"] == "calc.py"
+    assert first_item["overall_status"] == "verified"
+    assert first_item["rule_id"] == "PY-W007"
+
+    # 2. Filter by project_id
+    proj_res = client.get(f"/api/v1/projects/{test_env['proj_id']}/verification-history")
+    assert proj_res.status_code == 200
+    p_data = proj_res.json()
+    assert p_data["total"] >= 1
+    assert all(item["project_id"] == test_env["proj_id"] for item in p_data["items"])
+
+    # 3. Filter by status
+    status_res = client.get("/api/v1/verification/history?status=verified")
+    assert status_res.status_code == 200
+    s_data = status_res.json()
+    assert all(item["overall_status"] == "verified" for item in s_data["items"])
+
+    # 4. Filter by search
+    search_res = client.get("/api/v1/verification/history?search=calc.py")
+    assert search_res.status_code == 200
+    assert len(search_res.json()["items"]) >= 1
+
+    # 5. Non-matching search
+    no_match_res = client.get("/api/v1/verification/history?search=nonexistent_file_xyz.rs")
+    assert no_match_res.status_code == 200
+    assert len(no_match_res.json()["items"]) == 0
+    assert no_match_res.json()["total"] == 0

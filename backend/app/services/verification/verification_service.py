@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 from fastapi import HTTPException, status
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -18,6 +18,9 @@ from app.schemas.verification import (
     VerificationHistoryResponse,
     VerificationCheck,
     FindingsComparison,
+    VerificationListItem,
+    VerificationOverviewMetrics,
+    VerificationListResponse,
 )
 from app.services.detection.detection_engine import detection_engine
 from app.services.repair.repair_context import compute_source_fingerprint
@@ -371,6 +374,105 @@ class VerificationService:
             error_message=rec.error_message,
             duration_ms=rec.duration_ms,
             created_at=rec.created_at,
+        )
+
+
+    def _record_to_list_item(self, rec: RepairVerification) -> VerificationListItem:
+        base_dto = self._record_to_dto(rec)
+        project_name = rec.project.name if rec.project else None
+        rule_id = rec.proposal.rule_id if rec.proposal else None
+        rule_name = rec.proposal.rule_name if rec.proposal else None
+
+        return VerificationListItem(
+            **base_dto.model_dump(),
+            project_name=project_name,
+            rule_id=rule_id,
+            rule_name=rule_name,
+        )
+
+    def list_verifications(
+        self,
+        db: Session,
+        project_id: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> VerificationListResponse:
+        """
+        List verifications across all projects or for a specific project with filtering and metrics.
+        """
+        # 1. Compute overview metrics
+        metrics_query = select(
+            RepairVerification.status,
+            func.count(RepairVerification.id),
+        )
+        if project_id:
+            metrics_query = metrics_query.where(RepairVerification.project_id == project_id)
+        metrics_query = metrics_query.group_by(RepairVerification.status)
+        status_counts = dict(db.execute(metrics_query).all())
+
+        total_attempts = sum(status_counts.values())
+        metrics = VerificationOverviewMetrics(
+            total_attempts=total_attempts,
+            verified_count=status_counts.get("verified", 0),
+            failed_count=status_counts.get("failed", 0),
+            partial_count=status_counts.get("partial", 0),
+            inconclusive_count=status_counts.get("inconclusive", 0),
+            stale_count=status_counts.get("stale", 0),
+        )
+
+        # 2. Build filtered list query
+        query = (
+            select(RepairVerification)
+            .join(RepairVerification.project, isouter=True)
+            .join(RepairVerification.proposal, isouter=True)
+        )
+
+        if project_id:
+            query = query.where(RepairVerification.project_id == project_id)
+        if status:
+            query = query.where(RepairVerification.status == status)
+        if search and search.strip():
+            term = f"%{search.strip()}%"
+            query = query.where(
+                or_(
+                    RepairVerification.file_path.ilike(term),
+                    Project.name.ilike(term),
+                    RepairProposal.rule_id.ilike(term),
+                    RepairProposal.rule_name.ilike(term),
+                )
+            )
+
+        # Count filtered total
+        count_query = select(func.count()).select_from(query.subquery())
+        total = db.scalar(count_query) or 0
+
+        # Pagination bounds
+        safe_page_size = max(1, min(page_size, 100))
+        total_pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+        safe_page = max(1, min(page, total_pages)) if total > 0 else 1
+        offset = (safe_page - 1) * safe_page_size
+
+        records = (
+            db.execute(
+                query.order_by(desc(RepairVerification.created_at))
+                .offset(offset)
+                .limit(safe_page_size)
+            )
+            .scalars()
+            .all()
+        )
+
+        items = [self._record_to_list_item(rec) for rec in records]
+
+        return VerificationListResponse(
+            items=items,
+            total=total,
+            page=safe_page,
+            page_size=safe_page_size,
+            total_pages=total_pages,
+            metrics=metrics,
         )
 
 

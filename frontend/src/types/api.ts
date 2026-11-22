@@ -675,4 +675,28 @@ export interface VerificationHistoryResponse {
   verifications: VerificationReportResponse[];
 }
 
+export interface VerificationListItem extends VerificationReportResponse {
+  project_name?: string | null;
+  rule_id?: string | null;
+  rule_name?: string | null;
+}
+
+export interface VerificationOverviewMetrics {
+  total_attempts: number;
+  verified_count: number;
+  failed_count: number;
+  partial_count: number;
+  inconclusive_count: number;
+  stale_count: number;
+}
+
+export interface VerificationListResponse {
+  items: VerificationListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  metrics: VerificationOverviewMetrics;
+}
+
 

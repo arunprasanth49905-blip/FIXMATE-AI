@@ -6,10 +6,64 @@ from app.db.session import get_db
 from app.schemas.verification import (
     VerificationReportResponse,
     VerificationHistoryResponse,
+    VerificationListResponse,
 )
 from app.services.verification.verification_service import verification_service
 
 router = APIRouter(tags=["Automated Repair Verification"])
+
+
+@router.get(
+    "/verification/history",
+    response_model=VerificationListResponse,
+    summary="List verification results across projects with metrics, filtering and pagination",
+)
+def list_verifications(
+    project_id: Optional[str] = Query(None, description="Optional filter by project ID"),
+    status: Optional[str] = Query(None, description="Optional filter by status (verified, failed, partial, stale, inconclusive)"),
+    search: Optional[str] = Query(None, description="Optional search term matching file, project or rule"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Page size"),
+    db: Session = Depends(get_db),
+) -> VerificationListResponse:
+    """
+    Returns paginated verification records across all projects (or filtered by project)
+    along with global/filtered verification overview metrics.
+    """
+    return verification_service.list_verifications(
+        db=db,
+        project_id=project_id,
+        status=status,
+        search=search,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/verification-history",
+    response_model=VerificationListResponse,
+    summary="List verification results for a specific project",
+)
+def list_project_verifications(
+    project_id: str,
+    status: Optional[str] = Query(None, description="Optional filter by status"),
+    search: Optional[str] = Query(None, description="Optional search term"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Page size"),
+    db: Session = Depends(get_db),
+) -> VerificationListResponse:
+    """
+    Returns paginated verification records for a specific project along with project verification metrics.
+    """
+    return verification_service.list_verifications(
+        db=db,
+        project_id=project_id,
+        status=status,
+        search=search,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post(

@@ -4,21 +4,14 @@ import {
   XCircle,
   AlertTriangle,
   HelpCircle,
-  Clock,
   ShieldCheck,
-  ChevronDown,
-  ChevronUp,
   History,
-  FileCode,
-  Bug,
   RefreshCw,
-  Info,
-  Check,
   X,
   Loader2,
 } from 'lucide-react';
-import { VerificationReportResponse, VerificationCheck, FindingComparisonItem } from '../../types/api';
-import { apiClient, parseErrorMessage } from '../../services/apiClient';
+import { VerificationReportResponse } from '../../types/api';
+import { apiClient } from '../../services/apiClient';
 
 interface RepairVerificationCardProps {
   report: VerificationReportResponse;
@@ -26,6 +19,7 @@ interface RepairVerificationCardProps {
   proposalId: string;
   onReverify?: () => void;
   isVerifying?: boolean;
+  onClose?: () => void;
 }
 
 export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
@@ -34,12 +28,12 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
   proposalId,
   onReverify,
   isVerifying = false,
+  onClose,
 }) => {
   const [report, setReport] = useState<VerificationReportResponse>(initialReport);
   const [showHistory, setShowHistory] = useState(false);
   const [historyList, setHistoryList] = useState<VerificationReportResponse[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
 
   React.useEffect(() => {
     setReport(initialReport);
@@ -216,6 +210,28 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
             <History size={12} />
             <span>{showHistory ? 'Hide History' : 'History'}</span>
           </button>
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              data-testid="close-verification-card-btn"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px',
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                color: '#94a3b8',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              title="Close report view"
+            >
+              <X size={15} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -244,10 +260,11 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
           ) : historyList.length === 0 ? (
             <div style={{ fontStyle: 'italic', color: '#64748b' }}>No previous verification runs.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {historyList.map((item) => (
+            <div data-testid="verification-history-list" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {historyList.map((item, idx) => (
                 <div
-                  key={item.id}
+                  key={item.id || idx}
+                  data-testid="verification-history-item"
                   onClick={() => setReport(item)}
                   style={{
                     display: 'flex',
@@ -261,10 +278,10 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontWeight: 700, textTransform: 'uppercase', color: item.overall_status === 'verified' ? '#86efac' : '#fca5a5' }}>
-                      {item.overall_status}
+                      Run #{historyList.length - idx} • {item.overall_status}
                     </span>
                     <span style={{ color: '#94a3b8' }}>
-                      Target: {item.target_bug_status} • Regressions: {item.comparison.regression_count}
+                      Target: {item.target_bug_status} • Regressions: {item.comparison?.regression_count ?? (item as any).regression_count ?? 0}
                     </span>
                   </div>
                   <span style={{ color: '#64748b', fontSize: '10.5px' }}>
@@ -374,7 +391,6 @@ export const RepairVerificationCard: React.FC<RepairVerificationCardProps> = ({
               const isPass = check.status === 'passed';
               const isFail = check.status === 'failed';
               const isWarn = check.status === 'warning';
-              const isSkip = check.status === 'skipped';
 
               return (
                 <div

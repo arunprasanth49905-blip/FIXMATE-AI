@@ -3,6 +3,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { NewAnalysisPage } from '../pages/NewAnalysisPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { WorkspacePage } from '../pages/WorkspacePage';
+import { TestResultsPage } from '../pages/TestResultsPage';
 import { ComingSoonPage } from '../pages/ComingSoonPage';
 import { StatusState } from '../components/common/StatusIndicator';
 
@@ -29,7 +30,7 @@ export const getRoutes = (onConnectionChange?: (state: StatusState) => void): Ro
   },
   {
     path: '/test-results',
-    element: <ComingSoonPage moduleName="Test Results" phase="Phase 3" />,
+    element: <TestResultsPage />,
   },
   {
     path: '/analytics',
